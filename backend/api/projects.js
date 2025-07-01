@@ -1,5 +1,5 @@
 import express from 'express';
-import fs from 'fs/promises';
+import fs from 'node:fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
