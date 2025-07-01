@@ -125,7 +125,12 @@ install_docker_linux() {
             sudo "$OFFLINE_DIR/docker/get-docker.sh"
             
             # Add user to docker group
-            sudo usermod -aG docker "$USER"
+            if [[ -n "${USER:-}" ]]; then
+                sudo usermod -aG docker "$USER"
+            else
+                # In containers, USER might not be set, use whoami as fallback
+                sudo usermod -aG docker "$(whoami)"
+            fi
             
             log_success "Docker installed. Please log out and back in for group changes to take effect."
             ;;
@@ -140,7 +145,12 @@ install_docker_linux() {
             # Start and enable Docker
             sudo systemctl start docker
             sudo systemctl enable docker
-            sudo usermod -aG docker "$USER"
+            if [[ -n "${USER:-}" ]]; then
+                sudo usermod -aG docker "$USER"
+            else
+                # In containers, USER might not be set, use whoami as fallback
+                sudo usermod -aG docker "$(whoami)"
+            fi
             
             log_success "Docker installed and started."
             ;;
