@@ -15,6 +15,10 @@ fi
 echo "🛑 Stopping existing containers..."
 docker-compose down
 
+# Rebuild the frontend so the backend serves the latest assets
+echo "🔧 Rebuilding frontend..."
+(cd frontend/my-app && npm ci && npm run build && rm -rf ../../backend/frontend-build && cp -r build ../../backend/frontend-build)
+
 # Build and start the containers
 echo "🏗️  Building and starting containers..."
 docker-compose up --build -d
