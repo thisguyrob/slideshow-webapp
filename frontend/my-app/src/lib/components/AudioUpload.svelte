@@ -191,4 +191,3 @@
 		{/if}
 	{/if}
 </div>
-</script>

@@ -25,7 +25,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install Node dependencies
-RUN npm ci
+RUN npm install
 
 # Install Python dependencies for audio analysis
 RUN pip3 install numpy cython
