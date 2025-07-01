@@ -1,7 +1,7 @@
 import express from 'express';
 import { spawn } from 'child_process';
 import path from 'path';
-import fs from 'fs/promises';
+import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 
 const router = express.Router();
