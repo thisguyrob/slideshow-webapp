@@ -108,4 +108,3 @@
 		</div>
 	{/each}
 </div>
-</script>
