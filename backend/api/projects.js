@@ -9,7 +9,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECTS_DIR = path.join(__dirname, '../../projects');
 
 // Ensure projects directory exists
-await fs.mkdir(PROJECTS_DIR, { recursive: true });
+(async () => {
+  try {
+    await fs.mkdir(PROJECTS_DIR, { recursive: true });
+  } catch (err) {
+    console.error('Error creating projects directory:', err);
+  }
+})();
 
 // Get all projects
 router.get('/', async (req, res) => {
