@@ -328,13 +328,19 @@ EOF
 
 download_python_dependencies() {
     log_info "Downloading Python dependencies for offline use..."
-    
+
     mkdir -p "$OFFLINE_DIR/python/wheels"
-    
+
     # Download madmom and its dependencies
     local pip_cmd="python$PYTHON_VERSION -m pip"
     if check_command python$PYTHON_VERSION; then
-        $pip_cmd download --dest "$OFFLINE_DIR/python/wheels" madmom numpy scipy
+        # madmom's setup.py requires Cython for metadata generation
+        if ! $pip_cmd show Cython >/dev/null 2>&1; then
+            log_info "Installing build dependency Cython..."
+            $pip_cmd install --quiet Cython
+        fi
+
+        $pip_cmd download --dest "$OFFLINE_DIR/python/wheels" madmom numpy scipy Cython
         log_success "Python dependencies downloaded"
     else
         log_warning "Python $PYTHON_VERSION not available. Skipping Python dependency download."
