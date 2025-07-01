@@ -131,11 +131,11 @@ if [[ $NUM_IMAGES -eq 1 ]]; then
   FILTER+="[v0]fade=t=in:d=${FADE_IN_DURATION},fade=t=out:st=$(bc <<< "$AUDIO_DURATION - $FADE_OUT_DURATION"):d=${FADE_OUT_DURATION}[outv]"
 else
   # Multiple images - crossfade between them
-  FILTER+="[v0][v1]xfade=transition=fade:duration=${CROSSFADE_DURATION}:offset=$(bc <<< "$IMAGE_DISPLAY_TIME - $CROSSFADE_DURATION")[vx1];"
+  FILTER+="[v0][v1]xfade=transition=fade:duration=${CROSSFADE_DURATION}:offset=$(bc <<< "$FADE_IN_DURATION + $IMAGE_DISPLAY_TIME - $CROSSFADE_DURATION")[vx1];"
   
   for ((i=2; i<NUM_IMAGES; i++)); do
     PREV=$((i-1))
-    OFFSET=$(bc <<< "$PREV * ($IMAGE_DISPLAY_TIME - $CROSSFADE_DURATION)")
+    OFFSET=$(bc <<< "$FADE_IN_DURATION + $PREV * ($IMAGE_DISPLAY_TIME - $CROSSFADE_DURATION)")
     if [[ $i -eq $((NUM_IMAGES-1)) ]]; then
       FILTER+="[vx${PREV}][v$i]xfade=transition=fade:duration=${CROSSFADE_DURATION}:offset=${OFFSET}[vxfinal];"
     else

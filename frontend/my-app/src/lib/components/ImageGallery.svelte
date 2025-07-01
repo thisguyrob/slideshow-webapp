@@ -14,11 +14,12 @@
 	let reordering = $state(false);
 	let draggedItem = $state<string | null>(null);
 	
-	function toggleImageSelection(filename: string) {
-		if (selectedImages.has(filename)) {
-			selectedImages.delete(filename);
+	function toggleImageSelection(filename: string | {name: string}) {
+		const imageName = typeof filename === 'string' ? filename : filename.name;
+		if (selectedImages.has(imageName)) {
+			selectedImages.delete(imageName);
 		} else {
-			selectedImages.add(filename);
+			selectedImages.add(imageName);
 		}
 		selectedImages = new Set(selectedImages);
 	}
@@ -43,8 +44,9 @@
 		}
 	}
 	
-	function handleDragStart(e: DragEvent, filename: string) {
-		draggedItem = filename;
+	function handleDragStart(e: DragEvent, filename: string | {name: string}) {
+		const imageName = typeof filename === 'string' ? filename : filename.name;
+		draggedItem = imageName;
 		if (e.dataTransfer) {
 			e.dataTransfer.effectAllowed = 'move';
 		}
@@ -57,17 +59,22 @@
 		}
 	}
 	
-	function handleDrop(e: DragEvent, targetFilename: string) {
+	function handleDrop(e: DragEvent, targetFilename: string | {name: string}) {
 		e.preventDefault();
-		if (!draggedItem || draggedItem === targetFilename) return;
+		const targetName = typeof targetFilename === 'string' ? targetFilename : targetFilename.name;
+		if (!draggedItem || draggedItem === targetName) return;
 		
-		const currentIndex = project.images.indexOf(draggedItem);
-		const targetIndex = project.images.indexOf(targetFilename);
+		const currentIndex = project.images.findIndex((img: any) => 
+			(typeof img === 'string' ? img : img.name) === draggedItem
+		);
+		const targetIndex = project.images.findIndex((img: any) => 
+			(typeof img === 'string' ? img : img.name) === targetName
+		);
 		
 		if (currentIndex !== -1 && targetIndex !== -1) {
 			const newImages = [...project.images];
-			newImages.splice(currentIndex, 1);
-			newImages.splice(targetIndex, 0, draggedItem);
+			const item = newImages.splice(currentIndex, 1)[0];
+			newImages.splice(targetIndex, 0, item);
 			
 			saveNewOrder(newImages);
 		}
@@ -75,16 +82,21 @@
 		draggedItem = null;
 	}
 	
-	async function saveNewOrder(newImages: string[]) {
+	async function saveNewOrder(newImages: any[]) {
 		reordering = true;
 		
 		try {
+			// Convert objects to filenames for the API
+			const imageFilenames = newImages.map(img => 
+				typeof img === 'string' ? img : img.name
+			);
+			
 			const response = await fetch(`http://localhost:3000/api/projects/${project.id}/reorder`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify({ images: newImages })
+				body: JSON.stringify({ images: imageFilenames })
 			});
 			
 			if (response.ok) {
@@ -97,8 +109,9 @@
 		}
 	}
 	
-	function getImageUrl(filename: string) {
-		return `http://localhost:3000/api/files/${project.id}/${filename}`;
+	function getImageUrl(filename: string | {name: string}) {
+		const imageName = typeof filename === 'string' ? filename : filename.name;
+		return `http://localhost:3000/api/files/${project.id}/${imageName}`;
 	}
 </script>
 
@@ -143,7 +156,7 @@
 				<div class="aspect-square overflow-hidden rounded-lg bg-gray-100">
 					<img
 						src={getImageUrl(filename)}
-						alt={filename}
+						alt={typeof filename === 'string' ? filename : filename.name}
 						class="w-full h-full object-cover group-hover:opacity-75 transition-opacity"
 					/>
 				</div>
@@ -152,20 +165,22 @@
 				<div class="absolute top-2 left-2">
 					<input
 						type="checkbox"
-						checked={selectedImages.has(filename)}
+						checked={selectedImages.has(typeof filename === 'string' ? filename : filename.name)}
 						onchange={() => toggleImageSelection(filename)}
 						class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
 					/>
 				</div>
 				
 				<!-- Reorder Indicator -->
-				{#if reordering && draggedItem === filename}
+				{#if reordering && draggedItem === (typeof filename === 'string' ? filename : filename.name)}
 					<div class="absolute inset-0 bg-indigo-600 bg-opacity-20 rounded-lg"></div>
 				{/if}
 				
 				<!-- Image Number -->
 				<div class="absolute bottom-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-					{project.images.indexOf(filename) + 1}
+					{project.images.findIndex((img: any) => 
+						(typeof img === 'string' ? img : img.name) === (typeof filename === 'string' ? filename : filename.name)
+					) + 1}
 				</div>
 			</div>
 		{/each}

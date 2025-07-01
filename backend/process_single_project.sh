@@ -105,7 +105,7 @@ done
 FILTER+="[v0]"
 for ((i = 1; i < ${#IMAGES[@]}; i++)); do
   PREV=$((i - 1))
-  OFFSET=$(bc -l <<< "($i * $IMAGE_DURATION) - ($i * $CROSS_DURATION)")
+  OFFSET=$(bc -l <<< "1 + ($i * $IMAGE_DURATION) - (($i - 1) * $CROSS_DURATION)")
   if [[ $i -eq 1 ]]; then
     FILTER+="[v${i}]xfade=transition=fade:duration=${CROSS_DURATION}:offset=${OFFSET}[vx${i}];"
   elif [[ $i -eq $((${#IMAGES[@]} - 1)) ]]; then

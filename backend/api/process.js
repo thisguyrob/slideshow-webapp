@@ -3,11 +3,12 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
-import { wss } from '../index.js';
+// wss will be set by the main server
+let wss = null;
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECTS_DIR = path.join(__dirname, '../../projects');
+const PROJECTS_DIR = path.join(__dirname, '../projects');
 const SCRIPTS_DIR = path.join(__dirname, '..');
 
 // Active processes map
@@ -15,6 +16,8 @@ const activeProcesses = new Map();
 
 // Send progress update to WebSocket clients
 function sendProgressUpdate(projectId, message, progress = null) {
+  if (!wss || !wss.clients) return;
+  
   const update = {
     type: 'progress',
     projectId,
@@ -30,18 +33,29 @@ function sendProgressUpdate(projectId, message, progress = null) {
   });
 }
 
+// Test route
+router.get('/test', (req, res) => {
+  console.log('Test route hit');
+  res.json({ message: 'Process routes working' });
+});
+
 // Process slideshow for a project
 router.post('/:projectId/process', async (req, res) => {
+  console.log('Process route hit with projectId:', req.params.projectId);
   try {
     const { projectId } = req.params;
     let { audioOffset = '00:00', audioType = 'normal' } = req.body;
     const projectDir = path.join(PROJECTS_DIR, projectId);
     
     // Check for saved audio offset in metadata
+    let projectType = null;
     try {
       const metadataPath = path.join(projectDir, 'metadata.json');
       const metadataContent = await fs.readFile(metadataPath, 'utf-8');
       const metadata = JSON.parse(metadataContent);
+      
+      // Get project type
+      projectType = metadata.type;
       
       // Use saved offset if no offset provided in request
       if (!req.body.audioOffset && metadata.audioOffset) {
@@ -57,9 +71,12 @@ router.post('/:projectId/process', async (req, res) => {
     }
     
     // Check if project exists
+    console.log(`Checking project directory: ${projectDir}`);
     try {
       await fs.access(projectDir);
+      console.log(`Project directory exists: ${projectDir}`);
     } catch (err) {
+      console.log(`Project directory not found: ${projectDir}`, err);
       return res.status(404).json({ error: 'Project not found' });
     }
     
@@ -69,34 +86,53 @@ router.post('/:projectId/process', async (req, res) => {
     }
     
     // Check for required files
+    console.log(`Reading project directory files...`);
     const files = await fs.readdir(projectDir);
+    console.log(`Found files:`, files);
     const hasImages = files.some(f => /\.(jpg|jpeg|png|heic)$/i.test(f));
     const hasAudio = files.some(f => /\.(mp3|wav|m4a)$/i.test(f)) || 
                     files.includes('audio.txt');
     
+    console.log(`Has images: ${hasImages}, Has audio: ${hasAudio}`);
+    
     if (!hasImages) {
+      console.log(`No images found in project`);
       return res.status(400).json({ error: 'No images found in project' });
     }
     
     if (!hasAudio) {
+      console.log(`No audio found in project`);
       return res.status(400).json({ error: 'No audio file or YouTube URL found' });
     }
     
     // Determine which script to use
-    const scriptName = audioType === 'emotional' ? 'process_single_emotional.sh' : 'process_single_project.sh';
+    console.log(`Project type: ${projectType}, Audio type: ${audioType}`);
+    let scriptName;
+    if (projectType === 'Scavenger-Hunt') {
+      scriptName = 'process_scavenger_hunt.sh';
+    } else if (audioType === 'emotional') {
+      scriptName = 'process_single_emotional.sh';
+    } else {
+      scriptName = 'process_single_project.sh';
+    }
     const scriptPath = path.join(SCRIPTS_DIR, scriptName);
+    console.log(`Selected script: ${scriptName}, Path: ${scriptPath}`);
     
     // Check if script exists
     try {
       await fs.access(scriptPath);
+      console.log(`Script exists: ${scriptPath}`);
     } catch (err) {
+      console.log(`Script not found: ${scriptPath}`, err);
       return res.status(500).json({ error: `Script ${scriptName} not found` });
     }
     
     // Start the process
+    console.log(`Starting slideshow processing...`);
     sendProgressUpdate(projectId, 'Starting slideshow processing...', 0);
     
-    const process = spawn('/bin/bash', [scriptPath], {
+    console.log(`Spawning process: /bin/bash ${scriptPath} in ${projectDir}`);
+    const childProcess = spawn('/bin/bash', [scriptPath], {
       cwd: projectDir,
       env: {
         ...process.env,
@@ -106,12 +142,13 @@ router.post('/:projectId/process', async (req, res) => {
       }
     });
     
-    activeProcesses.set(projectId, process);
+    console.log(`Process spawned with PID: ${childProcess.pid}`);
+    activeProcesses.set(projectId, childProcess);
     
     let output = '';
     let errorOutput = '';
     
-    process.stdout.on('data', (data) => {
+    childProcess.stdout.on('data', (data) => {
       const text = data.toString();
       output += text;
       
@@ -129,12 +166,12 @@ router.post('/:projectId/process', async (req, res) => {
       }
     });
     
-    process.stderr.on('data', (data) => {
+    childProcess.stderr.on('data', (data) => {
       errorOutput += data.toString();
       sendProgressUpdate(projectId, `Error: ${data.toString().trim()}`);
     });
     
-    process.on('close', async (code) => {
+    childProcess.on('close', async (code) => {
       activeProcesses.delete(projectId);
       
       if (code === 0) {
@@ -156,7 +193,7 @@ router.post('/:projectId/process', async (req, res) => {
       }
     });
     
-    process.on('error', (err) => {
+    childProcess.on('error', (err) => {
       activeProcesses.delete(projectId);
       sendProgressUpdate(projectId, `Process error: ${err.message}`, -1);
     });
@@ -186,13 +223,13 @@ router.get('/:projectId/status', (req, res) => {
 // Cancel ongoing process
 router.post('/:projectId/cancel', (req, res) => {
   const { projectId } = req.params;
-  const process = activeProcesses.get(projectId);
+  const childProcess = activeProcesses.get(projectId);
   
-  if (!process) {
+  if (!childProcess) {
     return res.status(404).json({ error: 'No active process found for this project' });
   }
   
-  process.kill('SIGTERM');
+  childProcess.kill('SIGTERM');
   activeProcesses.delete(projectId);
   sendProgressUpdate(projectId, 'Process cancelled by user', -1);
   
@@ -231,5 +268,10 @@ router.get('/:projectId/download', async (req, res) => {
     res.status(500).json({ error: 'Failed to download video' });
   }
 });
+
+// Function to set the WebSocket server instance
+export function setWebSocketServer(wssInstance) {
+  wss = wssInstance;
+}
 
 export default router;

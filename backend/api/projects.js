@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECTS_DIR = path.join(__dirname, '../../projects');
+const PROJECTS_DIR = path.join(__dirname, '../projects');
 
 // Ensure projects directory exists
 (async () => {
@@ -52,6 +52,7 @@ router.get('/', async (req, res) => {
         projects.push({
           id: file,
           name: metadata.name || file,
+          type: metadata.type || 'FWI-main',
           createdAt: metadata.createdAt || stat.birthtime,
           updatedAt: metadata.updatedAt || stat.mtime,
           hasVideo,
@@ -70,11 +71,14 @@ router.get('/', async (req, res) => {
 // Create a new project
 router.post('/', async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, type } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Project name is required' });
     }
+    
+    const validTypes = ['FWI-main', 'FWI-emotional', 'Scavenger-Hunt'];
+    const projectType = validTypes.includes(type) ? type : 'FWI-main';
     
     const projectId = `${Date.now()}-${uuidv4().slice(0, 8)}`;
     const projectDir = path.join(PROJECTS_DIR, projectId);
@@ -84,6 +88,7 @@ router.post('/', async (req, res) => {
     const metadata = {
       id: projectId,
       name,
+      type: projectType,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       audioType: 'normal'
@@ -164,7 +169,9 @@ router.get('/:projectId', async (req, res) => {
     res.json({
       ...metadata,
       images: images.sort((a, b) => a.name.localeCompare(b.name)),
+      audio: audioFile ? audioFile.name : null,
       audioFile,
+      video: videoFile ? videoFile.name : null,
       videoFile,
       youtubeUrl
     });

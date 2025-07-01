@@ -4,6 +4,7 @@
 	interface Project {
 		id: string;
 		name: string;
+		type: string;
 		createdAt: string;
 		imageCount: number;
 		hasAudio: boolean;
@@ -42,18 +43,50 @@
 			console.error('Failed to delete project:', error);
 		}
 	}
+	
+	function getProjectTypeLabel(type: string) {
+		switch (type) {
+			case 'FWI-main': return 'FWI Main';
+			case 'FWI-emotional': return 'FWI Emotional';
+			case 'Scavenger-Hunt': return 'Scavenger Hunt';
+			default: return 'FWI Main';
+		}
+	}
+	
+	function getProjectTypeColor(type: string) {
+		switch (type) {
+			case 'FWI-main': return 'bg-blue-100 text-blue-800';
+			case 'FWI-emotional': return 'bg-purple-100 text-purple-800';
+			case 'Scavenger-Hunt': return 'bg-green-100 text-green-800';
+			default: return 'bg-blue-100 text-blue-800';
+		}
+	}
+	
+	function getProjectRoute(project: Project) {
+		switch (project.type) {
+			case 'FWI-main': return `/fwi-main/${project.id}`;
+			case 'FWI-emotional': return `/fwi-emotional/${project.id}`;
+			case 'Scavenger-Hunt': return `/scavenger-hunt/${project.id}`;
+			default: return `/project/${project.id}`;
+		}
+	}
 </script>
 
 <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
 	{#each projects as project}
 		<div class="bg-white overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow">
-			<a href="/project/{project.id}" class="block">
+			<a href="{getProjectRoute(project)}" class="block">
 				<div class="px-4 py-5 sm:p-6">
 					<div class="flex items-center justify-between">
 						<div class="flex-1 min-w-0">
-							<h3 class="text-lg font-medium text-gray-900 truncate">
-								{project.name}
-							</h3>
+							<div class="flex items-center gap-2 mb-1">
+								<h3 class="text-lg font-medium text-gray-900 truncate">
+									{project.name}
+								</h3>
+								<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {getProjectTypeColor(project.type)}">
+									{getProjectTypeLabel(project.type)}
+								</span>
+							</div>
 							<p class="mt-1 text-sm text-gray-500">
 								{formatDate(project.createdAt)}
 							</p>
@@ -89,7 +122,7 @@
 			<div class="bg-gray-50 px-4 py-3 sm:px-6">
 				<div class="flex justify-between items-center">
 					<a
-						href="/project/{project.id}"
+						href="{getProjectRoute(project)}"
 						class="text-sm font-medium text-indigo-600 hover:text-indigo-500"
 					>
 						Open Project

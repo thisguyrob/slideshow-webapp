@@ -9,24 +9,41 @@
 	
 	let currentIndex = $state(0);
 	let isPlaying = $state(false);
-	let interval: NodeJS.Timeout;
+	let interval: number;
 	let transitionDuration = $state(3000); // 3 seconds per slide
 	let imageElement: HTMLImageElement;
+	let audioElement: HTMLAudioElement;
+	let fadeElement: HTMLDivElement;
+	let isScavengerHunt = $state(false);
+	let scavengerHuntPhase = $state('fadeIn'); // 'fadeIn', 'hold', 'crossfade', 'fadeOut'
+	let scavengerHuntTimeout: number;
+	let audioStartTime = $state(0);
 	
 	$effect(() => {
+		isScavengerHunt = project.type === 'Scavenger-Hunt';
+		if (isScavengerHunt && project.images.length > 12) {
+			project.images = project.images.slice(0, 12);
+		}
 		// Cleanup on unmount or when playing stops
 		return () => {
 			if (interval) {
 				clearInterval(interval);
+			}
+			if (scavengerHuntTimeout) {
+				clearTimeout(scavengerHuntTimeout);
 			}
 		};
 	});
 	
 	function play() {
 		isPlaying = true;
-		interval = setInterval(() => {
-			nextSlide();
-		}, transitionDuration);
+		if (isScavengerHunt) {
+			startScavengerHuntSequence();
+		} else {
+			interval = setInterval(() => {
+				nextSlide();
+			}, transitionDuration);
+		}
 	}
 	
 	function pause() {
@@ -34,21 +51,148 @@
 		if (interval) {
 			clearInterval(interval);
 		}
+		if (scavengerHuntTimeout) {
+			clearTimeout(scavengerHuntTimeout);
+		}
+		if (audioElement) {
+			audioElement.pause();
+		}
 	}
 	
 	function nextSlide() {
-		currentIndex = (currentIndex + 1) % project.images.length;
+		if (!isScavengerHunt || !isPlaying) {
+			currentIndex = (currentIndex + 1) % project.images.length;
+		}
 	}
 	
 	function previousSlide() {
-		currentIndex = currentIndex === 0 ? project.images.length - 1 : currentIndex - 1;
+		if (!isScavengerHunt || !isPlaying) {
+			currentIndex = currentIndex === 0 ? project.images.length - 1 : currentIndex - 1;
+		}
 	}
 	
 	function goToSlide(index: number) {
-		currentIndex = index;
-		if (isPlaying) {
-			pause();
-			play();
+		if (!isScavengerHunt || !isPlaying) {
+			currentIndex = index;
+			if (isPlaying) {
+				pause();
+				play();
+			}
+		}
+	}
+	
+	function startScavengerHuntSequence() {
+		currentIndex = 0;
+		scavengerHuntPhase = 'fadeIn';
+		
+		if (audioElement && project.audio) {
+			// For Scavenger Hunt, audio is pre-trimmed so start from 0
+			audioElement.currentTime = 0;
+			audioElement.volume = 0;
+			audioElement.play().then(() => {
+				fadeAudioIn();
+			}).catch(err => {
+				console.error('Audio playback failed:', err);
+			});
+		}
+		
+		fadeFromBlack();
+	}
+	
+	function fadeFromBlack() {
+		if (fadeElement) {
+			// Start with black overlay visible
+			fadeElement.style.transition = 'none';
+			fadeElement.style.opacity = '1';
+			// Force reflow to ensure the initial state is applied
+			fadeElement.offsetHeight;
+			// Now fade out to reveal the image
+			fadeElement.style.transition = 'opacity 1s ease-in-out';
+			fadeElement.style.opacity = '0';
+			setTimeout(() => {
+				holdSlide();
+			}, 1000);
+		}
+	}
+	
+	function holdSlide() {
+		scavengerHuntPhase = 'hold';
+		scavengerHuntTimeout = setTimeout(() => {
+			if (currentIndex < project.images.length - 1) {
+				crossfadeToNext();
+			} else {
+				fadeToBlackAndEnd();
+			}
+		}, 5000);
+	}
+	
+	function crossfadeToNext() {
+		scavengerHuntPhase = 'crossfade';
+		const nextIndex = currentIndex + 1;
+		
+		if (fadeElement) {
+			// Use the fade overlay for smooth crossfade
+			fadeElement.style.transition = 'opacity 0.5s ease-in-out';
+			fadeElement.style.opacity = '1';
+			
+			setTimeout(() => {
+				// Change image while overlay is opaque
+				currentIndex = nextIndex;
+				// Small delay to ensure image loads
+				setTimeout(() => {
+					fadeElement.style.opacity = '0';
+					setTimeout(() => {
+						holdSlide();
+					}, 500);
+				}, 50);
+			}, 500);
+		}
+	}
+	
+	function fadeToBlackAndEnd() {
+		scavengerHuntPhase = 'fadeOut';
+		if (fadeElement) {
+			// Ensure we start from transparent
+			fadeElement.style.transition = 'none';
+			fadeElement.style.opacity = '0';
+			// Force reflow
+			fadeElement.offsetHeight;
+			// Now fade to black
+			fadeElement.style.transition = 'opacity 1s ease-in-out';
+			fadeElement.style.opacity = '1';
+		}
+		
+		if (audioElement) {
+			fadeAudioOut();
+		}
+		
+		setTimeout(() => {
+			isPlaying = false;
+		}, 1000);
+	}
+	
+	function fadeAudioIn() {
+		if (audioElement) {
+			const fadeInInterval = setInterval(() => {
+				if (audioElement.volume < 1) {
+					audioElement.volume = Math.min(audioElement.volume + 0.05, 1);
+				} else {
+					clearInterval(fadeInInterval);
+				}
+			}, 50);
+		}
+	}
+	
+	function fadeAudioOut() {
+		if (audioElement) {
+			const fadeOutInterval = setInterval(() => {
+				if (audioElement.volume > 0) {
+					audioElement.volume = Math.max(audioElement.volume - 0.05, 0);
+				} else {
+					clearInterval(fadeOutInterval);
+					audioElement.pause();
+				}
+			}, 50);
 		}
 	}
 	
@@ -80,12 +224,36 @@
 		}
 	}
 	
-	function getImageUrl(filename: string) {
-		return `http://localhost:3000/api/files/${project.id}/${filename}`;
+	function getImageUrl(filename: string | {name: string}) {
+		const imageName = typeof filename === 'string' ? filename : filename.name;
+		return `http://localhost:3000/api/files/${project.id}/${imageName}`;
+	}
+	
+	function getAudioUrl() {
+		return `http://localhost:3000/api/files/${project.id}/song.mp3`;
+	}
+	
+	function convertTimeToSeconds(timeString: string): number {
+		if (!timeString) return 0;
+		
+		const parts = timeString.split(':').map(part => parseInt(part, 10));
+		
+		if (parts.length === 2) {
+			// mm:ss format
+			return parts[0] * 60 + parts[1];
+		} else if (parts.length === 3) {
+			// hh:mm:ss format
+			return parts[0] * 3600 + parts[1] * 60 + parts[2];
+		}
+		
+		return 0;
 	}
 	
 	onMount(() => {
 		document.addEventListener('keydown', handleKeydown);
+		if (project.audioOffset) {
+			audioStartTime = convertTimeToSeconds(project.audioOffset) || 0;
+		}
 		return () => {
 			document.removeEventListener('keydown', handleKeydown);
 		};
@@ -93,6 +261,13 @@
 </script>
 
 <div class="relative bg-black rounded-lg overflow-hidden">
+	<!-- Audio Element -->
+	{#if isScavengerHunt && project.audio}
+		<audio bind:this={audioElement} preload="auto">
+			<source src={getAudioUrl()} type="audio/mpeg">
+		</audio>
+	{/if}
+	
 	<!-- Main Image Display -->
 	<div class="relative aspect-video">
 		<img
@@ -101,6 +276,15 @@
 			alt="Slide {currentIndex + 1}"
 			class="w-full h-full object-contain"
 		/>
+		
+		<!-- Fade overlay for scavenger hunt -->
+		{#if isScavengerHunt}
+			<div
+				bind:this={fadeElement}
+				class="absolute inset-0 bg-black pointer-events-none"
+				style="opacity: 0; z-index: 10;"
+			></div>
+		{/if}
 		
 		<!-- Navigation Overlay -->
 		<div class="absolute inset-0 flex items-center justify-between p-4 opacity-0 hover:opacity-100 transition-opacity">
@@ -168,26 +352,35 @@
 				</button>
 			</div>
 			
-			<!-- Speed Control -->
-			<div class="flex items-center space-x-2 text-white">
-				<label for="speed" class="text-sm">Speed:</label>
-				<select
-					id="speed"
-					bind:value={transitionDuration}
-					onchange={() => {
-						if (isPlaying) {
-							pause();
-							play();
-						}
-					}}
-					class="bg-gray-700 text-white rounded px-2 py-1 text-sm"
-				>
-					<option value={2000}>Fast (2s)</option>
-					<option value={3000}>Normal (3s)</option>
-					<option value={5000}>Slow (5s)</option>
-					<option value={10000}>Very Slow (10s)</option>
-				</select>
-			</div>
+			<!-- Speed Control (hidden for scavenger hunt) -->
+			{#if !isScavengerHunt}
+				<div class="flex items-center space-x-2 text-white">
+					<label for="speed" class="text-sm">Speed:</label>
+					<select
+						id="speed"
+						bind:value={transitionDuration}
+						onchange={() => {
+							if (isPlaying) {
+								pause();
+								play();
+							}
+						}}
+						class="bg-gray-700 text-white rounded px-2 py-1 text-sm"
+					>
+						<option value={2000}>Fast (2s)</option>
+						<option value={3000}>Normal (3s)</option>
+						<option value={5000}>Slow (5s)</option>
+						<option value={10000}>Very Slow (10s)</option>
+					</select>
+				</div>
+			{:else}
+				<div class="flex items-center space-x-2 text-white text-sm">
+					<span>Scavenger Hunt Mode</span>
+					{#if scavengerHuntPhase !== 'hold'}
+						<span class="text-yellow-400">({scavengerHuntPhase})</span>
+					{/if}
+				</div>
+			{/if}
 			
 			<!-- Fullscreen Button -->
 			<button

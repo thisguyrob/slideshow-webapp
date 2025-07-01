@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { goto } from '$app/navigation';
 	
 	const dispatch = createEventDispatcher();
 	
 	let projectName = $state('');
+	let projectType = $state<'FWI-main' | 'FWI-emotional' | 'Scavenger-Hunt'>('FWI-main');
 	let creating = $state(false);
 	let error = $state('');
 	
@@ -22,12 +24,20 @@
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify({ name: projectName })
+				body: JSON.stringify({ name: projectName, type: projectType })
 			});
 			
 			if (response.ok) {
 				const project = await response.json();
 				dispatch('created', project);
+				// Navigate to the new project based on type
+				let route = `/project/${project.id}`;
+				switch (project.type) {
+					case 'FWI-main': route = `/fwi-main/${project.id}`; break;
+					case 'FWI-emotional': route = `/fwi-emotional/${project.id}`; break;
+					case 'Scavenger-Hunt': route = `/scavenger-hunt/${project.id}`; break;
+				}
+				goto(route);
 			} else {
 				error = 'Failed to create project';
 			}
@@ -65,14 +75,36 @@
 							<h3 class="text-base font-semibold leading-6 text-gray-900">
 								Create New Project
 							</h3>
-							<div class="mt-4">
-								<input
-									type="text"
-									bind:value={projectName}
-									placeholder="Enter project name"
-									class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-									autofocus
-								/>
+							<div class="mt-4 space-y-4">
+								<div>
+									<label for="project-name" class="block text-sm font-medium text-gray-700 mb-2">
+										Project Name
+									</label>
+									<input
+										id="project-name"
+										type="text"
+										bind:value={projectName}
+										placeholder="Enter project name"
+										class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+										autofocus
+									/>
+								</div>
+								
+								<div>
+									<label for="project-type" class="block text-sm font-medium text-gray-700 mb-2">
+										Project Type
+									</label>
+									<select
+										id="project-type"
+										bind:value={projectType}
+										class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+									>
+										<option value="FWI-main">FWI Main</option>
+										<option value="FWI-emotional">FWI Emotional</option>
+										<option value="Scavenger-Hunt">Scavenger Hunt</option>
+									</select>
+								</div>
+								
 								{#if error}
 									<p class="mt-2 text-sm text-red-600">{error}</p>
 								{/if}

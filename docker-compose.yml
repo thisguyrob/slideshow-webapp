@@ -1,6 +1,8 @@
 services:
   backend:
-    build: ./backend
+    build: 
+      context: .
+      dockerfile: ./backend/Dockerfile
     container_name: slideshow-backend
     ports:
       - "3000:3000"
@@ -9,20 +11,6 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-    networks:
-      - slideshow-network
-    restart: unless-stopped
-
-  frontend:
-    build: ./frontend/my-app
-    container_name: slideshow-frontend
-    ports:
-      - "5173:3000"
-    environment:
-      - NODE_ENV=production
-      - PUBLIC_API_URL=http://backend:3000
-    depends_on:
-      - backend
     networks:
       - slideshow-network
     restart: unless-stopped

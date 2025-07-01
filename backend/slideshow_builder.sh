@@ -118,7 +118,7 @@ for DIR in */; do
   OVERLAP=$(( IMAGE_DURATION - CROSS_DURATION ))
   FILTER+="[0:v]${GEOM},fade=t=in:st=0:d=1[v0];"
   for ((i=1;i<TOTAL;i++)); do
-    prev=$((i-1)) offset=$((OVERLAP*i))
+    prev=$((i-1)) offset=$((1 + OVERLAP*i))
     FILTER+="[$i:v]${GEOM}[s$i];"
     FILTER+="[v$prev][s$i]xfade=transition=fade:duration=${CROSS_DURATION}:offset=${offset},format=yuv420p[v$i];"
   done

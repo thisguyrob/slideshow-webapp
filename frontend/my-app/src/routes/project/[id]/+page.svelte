@@ -15,22 +15,61 @@
 	
 	const projectId = $page.params.id;
 	
+	function isVideoUpToDate(project: any): boolean {
+		// If no video exists, it's not up to date
+		if (!project.video) return false;
+		
+		// If no lastProcessed time, assume video is outdated
+		if (!project.lastProcessed) return false;
+		
+		// If project was updated after last processing, video is outdated
+		if (project.updatedAt && project.lastProcessed) {
+			const updatedTime = new Date(project.updatedAt).getTime();
+			const processedTime = new Date(project.lastProcessed).getTime();
+			return processedTime >= updatedTime;
+		}
+		
+		// Default to assuming video is up to date if we have it
+		return true;
+	}
+	
 	async function loadProject() {
 		try {
 			const response = await fetch(`http://localhost:3000/api/projects/${projectId}`);
 			if (response.ok) {
 				project = await response.json();
 			} else {
+				console.error('Project not found:', projectId);
+				alert('Project not found. Redirecting to home page.');
 				goto('/');
 			}
 		} catch (error) {
 			console.error('Failed to load project:', error);
+			alert('Failed to load project. Redirecting to home page.');
 			goto('/');
 		} finally {
 			loading = false;
 		}
 	}
 	
+	function getProjectTypeLabel(type: string) {
+		switch (type) {
+			case 'FWI-main': return 'FWI Main';
+			case 'FWI-emotional': return 'FWI Emotional';
+			case 'Scavenger-Hunt': return 'Scavenger Hunt';
+			default: return 'FWI Main';
+		}
+	}
+	
+	function getProjectTypeColor(type: string) {
+		switch (type) {
+			case 'FWI-main': return 'bg-blue-100 text-blue-800';
+			case 'FWI-emotional': return 'bg-purple-100 text-purple-800';
+			case 'Scavenger-Hunt': return 'bg-green-100 text-green-800';
+			default: return 'bg-blue-100 text-blue-800';
+		}
+	}
+
 	onMount(() => {
 		loadProject();
 		
@@ -92,14 +131,19 @@
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
 							</svg>
 						</a>
-						<h1 class="text-2xl font-bold text-gray-900">{project.name}</h1>
+						<div class="flex items-center gap-3">
+							<h1 class="text-2xl font-bold text-gray-900">{project.name}</h1>
+							<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {getProjectTypeColor(project.type)}">
+								{getProjectTypeLabel(project.type)}
+							</span>
+						</div>
 					</div>
 					
 					{#if project.images?.length > 0 && project.audio}
 						<div class="flex items-center space-x-3">
 							{#if project.status === 'processing'}
 								<ProcessingStatus {project} />
-							{:else if project.video}
+							{:else if isVideoUpToDate(project)}
 								<a
 									href="http://localhost:3000/api/process/{projectId}/download"
 									class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
@@ -118,7 +162,7 @@
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 									</svg>
-									Generate Slideshow
+{project.video ? 'Re-render Slideshow' : 'Generate Slideshow'}
 								</button>
 							{/if}
 						</div>

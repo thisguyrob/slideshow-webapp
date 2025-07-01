@@ -13,6 +13,7 @@
 	let uploading = $state(false);
 	let uploadMode = $state<'file' | 'youtube'>('file');
 	let youtubeUrl = $state('');
+	let startTime = $state('0:00');
 	let fileInput: HTMLInputElement;
 	
 	async function handleFileUpload(e: Event) {
@@ -59,6 +60,7 @@
 		uploading = true;
 		
 		try {
+			// Save URL first
 			const response = await fetch(`http://localhost:3000/api/upload/${projectId}/youtube`, {
 				method: 'POST',
 				headers: {
@@ -68,18 +70,25 @@
 			});
 			
 			if (response.ok) {
-				// Start download
+				// Start download and processing pipeline
 				const downloadResponse = await fetch(`http://localhost:3000/api/upload/${projectId}/youtube-download`, {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json'
 					},
-					body: JSON.stringify({ url: youtubeUrl })
+					body: JSON.stringify({ 
+						url: youtubeUrl,
+						startTime: startTime || '0:00'
+					})
 				});
 				
 				if (downloadResponse.ok) {
 					dispatch('uploaded');
 					youtubeUrl = '';
+					startTime = '0:00';
+				} else {
+					const errorData = await downloadResponse.json();
+					alert(`Download failed: ${errorData.error || 'Unknown error'}`);
 				}
 			} else {
 				alert('Invalid YouTube URL. Please try again.');
@@ -177,20 +186,56 @@
 			</div>
 		{:else}
 			<div class="space-y-4">
-				<input
-					type="text"
-					bind:value={youtubeUrl}
-					placeholder="https://www.youtube.com/watch?v=..."
-					class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-					disabled={uploading}
-				/>
+				<div>
+					<label for="youtube-url" class="block text-sm font-medium text-gray-700 mb-2">
+						YouTube URL
+					</label>
+					<input
+						id="youtube-url"
+						type="text"
+						bind:value={youtubeUrl}
+						placeholder="https://www.youtube.com/watch?v=..."
+						class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+						disabled={uploading}
+					/>
+				</div>
+				
+				<div>
+					<label for="start-time" class="block text-sm font-medium text-gray-700 mb-2">
+						Start Time (optional)
+					</label>
+					<input
+						id="start-time"
+						type="text"
+						bind:value={startTime}
+						placeholder="0:00 (mm:ss or hh:mm:ss)"
+						class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+						disabled={uploading}
+					/>
+					<p class="text-xs text-gray-500 mt-1">
+						Specify where to start extracting audio (default: 0:00)
+					</p>
+				</div>
+				
 				<button
 					onclick={handleYouTubeSubmit}
 					disabled={uploading || !youtubeUrl.trim()}
 					class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
 				>
-					{uploading ? 'Processing...' : 'Download from YouTube'}
+					{uploading ? 'Processing (yt-dlp + ffmpeg + madmom)...' : 'Download & Process Audio'}
 				</button>
+				
+				{#if uploading}
+					<div class="text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
+						<p class="font-medium mb-1">Processing steps:</p>
+						<ul class="list-disc list-inside space-y-1 text-xs">
+							<li>Downloading audio with yt-dlp</li>
+							<li>Converting audio to MP3 with ffmpeg</li>
+							<li>Detecting downbeats with madmom</li>
+						</ul>
+						<p class="text-xs text-gray-500 mt-2">Check Docker terminal for detailed logs</p>
+					</div>
+				{/if}
 			</div>
 		{/if}
 	{/if}

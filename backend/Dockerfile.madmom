@@ -1,0 +1,26 @@
+# Lightweight Python 3.9 container just for madmom
+FROM python:3.9-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libasound2-dev \
+    libsndfile1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies with specific versions for compatibility
+RUN pip install --no-cache-dir \
+    numpy==1.21.6 \
+    scipy==1.7.3 \
+    cython==0.29.32 \
+    madmom
+
+# Create working directory
+WORKDIR /madmom
+
+# Copy and make executable the madmom processing script
+COPY madmom_processor.py /madmom/
+
+# Entry point that accepts file path as argument
+ENTRYPOINT ["python", "madmom_processor.py"]
