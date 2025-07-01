@@ -12,3 +12,6 @@ projects/**
 .DS_Store
 .env
 
+
+# frontend build
+frontend/my-app/build/
