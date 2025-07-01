@@ -6,7 +6,6 @@ services:
       - "3000:3000"
     volumes:
       - ./backend/projects:/app/projects
-      - ./backend:/app
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -21,7 +20,7 @@ services:
       - "5173:3000"
     environment:
       - NODE_ENV=production
-      - PUBLIC_API_URL=http://localhost:3000
+      - PUBLIC_API_URL=http://backend:3000
     depends_on:
       - backend
     networks:
