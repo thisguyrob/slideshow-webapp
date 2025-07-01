@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 # Configuration
 OFFLINE_DIR="$(pwd)/dev-dependencies"
 NODE_VERSION="18.19.0"
-PYTHON_VERSION="3.11"
+PYTHON_VERSION="3.9"
 
 # Helper functions
 log_info() {
@@ -235,8 +235,8 @@ install_python() {
     
     log_info "Setting up Python $PYTHON_VERSION..."
     
-    if check_command python3; then
-        local current_version=$(python3 --version | sed 's/Python //' | cut -d. -f1,2)
+    if check_command python$PYTHON_VERSION; then
+        local current_version=$(python$PYTHON_VERSION --version | sed 's/Python //' | cut -d. -f1,2)
         if [[ "$current_version" == "$PYTHON_VERSION" ]]; then
             log_warning "Python $PYTHON_VERSION already installed"
             return 0
@@ -260,8 +260,14 @@ install_python() {
                 . /etc/os-release
                 case $ID in
                     ubuntu|debian)
+                        # Add deadsnakes PPA for older Python versions
                         sudo apt-get update
-                        sudo apt-get install -y python$PYTHON_VERSION python$PYTHON_VERSION-pip python$PYTHON_VERSION-dev
+                        sudo apt-get install -y software-properties-common
+                        sudo add-apt-repository -y ppa:deadsnakes/ppa
+                        sudo apt-get update
+                        sudo apt-get install -y python$PYTHON_VERSION python$PYTHON_VERSION-dev python$PYTHON_VERSION-venv python$PYTHON_VERSION-distutils
+                        # Install pip for the specific Python version
+                        curl -sS https://bootstrap.pypa.io/get-pip.py | python$PYTHON_VERSION
                         ;;
                     centos|rhel|fedora)
                         sudo dnf install -y python$PYTHON_VERSION python$PYTHON_VERSION-pip python$PYTHON_VERSION-devel
@@ -326,12 +332,12 @@ download_python_dependencies() {
     mkdir -p "$OFFLINE_DIR/python/wheels"
     
     # Download madmom and its dependencies
-    local pip_cmd="pip3"
-    if check_command python3; then
+    local pip_cmd="python$PYTHON_VERSION -m pip"
+    if check_command python$PYTHON_VERSION; then
         $pip_cmd download --dest "$OFFLINE_DIR/python/wheels" madmom numpy scipy
         log_success "Python dependencies downloaded"
     else
-        log_warning "Python not available. Skipping Python dependency download."
+        log_warning "Python $PYTHON_VERSION not available. Skipping Python dependency download."
     fi
 }
 
@@ -339,7 +345,7 @@ download_docker_images() {
     log_info "Pre-downloading Docker base images..."
     
     if check_command docker && docker info >/dev/null 2>&1; then
-        local images=("node:18-bookworm" "node:18-bookworm-slim" "python:3.11-slim")
+        local images=("node:18-bookworm" "node:18-bookworm-slim" "python:3.9-slim")
         
         for image in "${images[@]}"; do
             log_info "Pulling $image..."
@@ -399,9 +405,9 @@ if command -v docker >/dev/null 2>&1; then
 fi
 
 # Install Python packages
-if command -v pip3 >/dev/null 2>&1; then
+if command -v python3.9 >/dev/null 2>&1; then
     echo "Installing Python packages from wheels..."
-    pip3 install --find-links "$SCRIPT_DIR/python/wheels" --no-index madmom
+    python3.9 -m pip install --find-links "$SCRIPT_DIR/python/wheels" --no-index madmom
 fi
 
 # Install npm packages from cache
@@ -461,8 +467,8 @@ After installation, verify with:
 \`\`\`bash
 docker --version
 node --version
-python3 --version
-pip3 list | grep madmom
+python3.9 --version
+python3.9 -m pip list | grep madmom
 \`\`\`
 
 ## Development Workflow
@@ -538,7 +544,7 @@ main() {
     echo ""
     echo "Next steps:"
     echo "1. Restart your terminal"
-    echo "2. Run: docker --version && node --version && python3 --version"
+    echo "2. Run: docker --version && node --version && python3.9 --version"
     echo "3. Test the app: ./docker-test-runner.sh"
     echo ""
     echo "For offline installation on other machines:"
