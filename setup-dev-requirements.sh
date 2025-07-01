@@ -334,10 +334,15 @@ download_python_dependencies() {
     # Download madmom and its dependencies
     local pip_cmd="python$PYTHON_VERSION -m pip"
     if check_command python$PYTHON_VERSION; then
-        # madmom's setup.py requires Cython for metadata generation
+        # madmom's setup.py requires Cython and numpy for metadata generation
         if ! $pip_cmd show Cython >/dev/null 2>&1; then
             log_info "Installing build dependency Cython..."
             $pip_cmd install --quiet Cython
+        fi
+
+        if ! $pip_cmd show numpy >/dev/null 2>&1; then
+            log_info "Installing build dependency numpy..."
+            $pip_cmd install --quiet numpy
         fi
 
         $pip_cmd download --dest "$OFFLINE_DIR/python/wheels" madmom numpy scipy Cython
