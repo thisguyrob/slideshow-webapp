@@ -221,4 +221,3 @@
 <div class="mt-4 text-sm text-gray-500 text-center">
 	Tip: Use arrow keys to navigate, spacebar to play/pause, and ESC to exit fullscreen
 </div>
-</script>

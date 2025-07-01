@@ -132,4 +132,3 @@
 		{/if}
 	</div>
 </div>
-</script>
