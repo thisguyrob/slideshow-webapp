@@ -132,7 +132,7 @@ router.post('/:projectId/youtube', async (req, res) => {
     }
     
     // Validate YouTube URL
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\/.+$/;
     if (!youtubeRegex.test(url)) {
       return res.status(400).json({ error: 'Invalid YouTube URL' });
     }
@@ -181,7 +181,7 @@ router.post('/:projectId/youtube-download', async (req, res) => {
     }
     
     // Validate YouTube URL
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\/.+$/;
     if (!youtubeRegex.test(url)) {
       return res.status(400).json({ error: 'Invalid YouTube URL' });
     }

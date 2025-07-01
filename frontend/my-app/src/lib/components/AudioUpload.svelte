@@ -70,7 +70,11 @@
 			if (response.ok) {
 				// Start download
 				const downloadResponse = await fetch(`http://localhost:3000/api/upload/${projectId}/youtube-download`, {
-					method: 'POST'
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({ url: youtubeUrl })
 				});
 				
 				if (downloadResponse.ok) {
