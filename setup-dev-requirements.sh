@@ -267,7 +267,7 @@ install_python() {
                         sudo apt-get update
                         sudo apt-get install -y python$PYTHON_VERSION python$PYTHON_VERSION-dev python$PYTHON_VERSION-venv python$PYTHON_VERSION-distutils
                         # Install pip for the specific Python version
-                        curl -sS https://bootstrap.pypa.io/get-pip.py | python$PYTHON_VERSION
+                        curl -sS https://bootstrap.pypa.io/get-pip.py | python$PYTHON_VERSION - --ignore-installed --break-system-packages
                         ;;
                     centos|rhel|fedora)
                         sudo dnf install -y python$PYTHON_VERSION python$PYTHON_VERSION-pip python$PYTHON_VERSION-devel
