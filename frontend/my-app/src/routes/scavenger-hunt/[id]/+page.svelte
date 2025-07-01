@@ -218,7 +218,7 @@
 						</div>
 					</div>
 					
-					{#if slots.some(slot => slot.image) && project.audio && typeof project.audio === 'string' && project.audio.trim() !== ''}
+                                       {#if slots.some(slot => slot.image) && project.audioTrimmed}
 						<div class="flex items-center space-x-3">
 							{#if isRendering}
 								<button
@@ -279,12 +279,54 @@
 			</div>
 		</div>
 
-		<!-- Main Content -->
-		<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-			<!-- Empty state for now -->
-			<div class="text-center py-12">
-				<p class="text-gray-500">Scavenger Hunt UI is being rebuilt</p>
-			</div>
-		</main>
+                <!-- Main Content -->
+                <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {#if activeTab === 'images'}
+                                <div class="space-y-8">
+                                        <!-- Audio Upload Section -->
+                                        <div>
+                                                <h2 class="text-lg font-medium text-gray-900 mb-4">Audio</h2>
+                                                <ScavengerHuntAudioUpload
+                                                        {projectId}
+                                                        hasAudio={!!project.audio}
+                                                        audioFile={project.audio}
+                                                        audioTrimmed={project.audioTrimmed}
+                                                        audioDuration={project.audioDuration}
+                                                        audioOffset={project.audioOffset}
+                                                        on:uploaded={handleAudioUploaded}
+                                                />
+                                        </div>
+
+                                        {#if project.audioTrimmed}
+                                                <!-- Image Grid Section -->
+                                                <div>
+                                                        <h2 class="text-lg font-medium text-gray-900 mb-4">Images (12 Slots)</h2>
+                                                        <p class="text-sm text-gray-600 mb-6">Upload images to specific slots. Each slot can contain one unique image.</p>
+                                                        <ScavengerHuntImageGrid
+                                                                {projectId}
+                                                                {slots}
+                                                                onSlotsUpdate={handleSlotsUpdate}
+                                                        />
+                                                </div>
+                                        {:else}
+                                                <div class="text-sm text-gray-500">
+                                                        Please process your audio first. The image slots will appear once the audio is ready.
+                                                </div>
+                                        {/if}
+                                </div>
+                        {:else if activeTab === 'slideshow'}
+                                {#if slots.some(slot => slot.image) && project.audioTrimmed}
+                                        <SlideshowViewer {project} />
+                                {:else}
+                                        <div class="text-center py-12">
+                                                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                                </svg>
+                                                <h3 class="mt-2 text-sm font-medium text-gray-900">Add images and audio first</h3>
+                                                <p class="mt-1 text-sm text-gray-500">Upload audio and images to preview the slideshow.</p>
+                                        </div>
+                                {/if}
+                        {/if}
+                </main>
 	</div>
 {/if}
