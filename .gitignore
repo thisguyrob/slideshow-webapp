@@ -1,0 +1,14 @@
+# dependencies
+node_modules
+pnpm-lock.yaml
+# builds
+frontend/.svelte-kit/
+frontend/build/
+backend/dist/
+# runtime volumes
+projects/**
+!projects/.gitkeep
+# misc
+.DS_Store
+.env
+
