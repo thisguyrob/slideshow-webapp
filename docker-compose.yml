@@ -1,8 +1,39 @@
-version: '3'
+version: '3.8'
+
 services:
-  slideshow:
-    build: .
+  backend:
+    build: ./backend
+    container_name: slideshow-backend
     ports:
       - "3000:3000"
     volumes:
-      - ./projects:/app/projects
+      - ./backend/projects:/app/projects
+      - ./backend:/app
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    networks:
+      - slideshow-network
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend/my-app
+    container_name: slideshow-frontend
+    ports:
+      - "5173:3000"
+    environment:
+      - NODE_ENV=production
+      - PUBLIC_API_URL=http://localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - slideshow-network
+    restart: unless-stopped
+
+networks:
+  slideshow-network:
+    driver: bridge
+
+volumes:
+  projects:
+    driver: local
