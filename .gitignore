@@ -15,3 +15,6 @@ projects/**
 
 # frontend build
 frontend/my-app/build/
+
+# dev dependencies
+dev-dependencies/

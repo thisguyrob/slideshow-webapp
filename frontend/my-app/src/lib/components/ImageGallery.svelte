@@ -175,4 +175,3 @@
 		Drag and drop images to reorder them
 	</p>
 </div>
-</script>

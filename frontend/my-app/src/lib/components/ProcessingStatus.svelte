@@ -51,4 +51,3 @@
 		Cancel
 	</button>
 </div>
-</script>
