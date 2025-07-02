@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { getApiUrl } from '$lib/config';
 	import ScavengerHuntAudioPlayer from './ScavengerHuntAudioPlayer.svelte';
 	
 	interface Props {
@@ -28,6 +29,7 @@
 	let uploading = $state(false);
 	let youtubeUrl = $state('');
 	let startTime = $state('0:00');
+	let showReplaceForm = $state(false);
 	
 	async function handleYouTubeSubmit() {
 		if (!youtubeUrl.trim()) {
@@ -39,7 +41,7 @@
 		
 		try {
 			// Save URL first
-			const response = await fetch(`http://localhost:3000/api/upload/${projectId}/youtube`, {
+			const response = await fetch(`${getApiUrl()}/api/uploads/${projectId}/youtube`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -49,7 +51,7 @@
 			
 			if (response.ok) {
 				// Start download and processing pipeline
-				const downloadResponse = await fetch(`http://localhost:3000/api/upload/${projectId}/youtube-download`, {
+				const downloadResponse = await fetch(`${getApiUrl()}/api/uploads/${projectId}/youtube-download`, {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json'
@@ -64,6 +66,7 @@
 					dispatch('uploaded');
 					youtubeUrl = '';
 					startTime = '0:00';
+					showReplaceForm = false;
 				} else {
 					const errorData = await downloadResponse.json();
 					alert(`Download failed: ${errorData.error || 'Unknown error'}`);
@@ -78,25 +81,9 @@
 			uploading = false;
 		}
 	}
-	
-	async function deleteAudio() {
-		if (!confirm('Delete the audio file?')) return;
-		
-		try {
-			const response = await fetch(`http://localhost:3000/api/upload/${projectId}/files/${audioFile}`, {
-				method: 'DELETE'
-			});
-			
-			if (response.ok) {
-				dispatch('uploaded');
-			}
-		} catch (error) {
-			console.error('Failed to delete audio:', error);
-		}
-	}
 </script>
 
-{#if hasAudio && audioFile}
+{#if hasAudio && audioFile && !showReplaceForm}
 	{#if audioTrimmed}
 		<!-- Show mini player for processed audio -->
 		<ScavengerHuntAudioPlayer 
@@ -104,7 +91,7 @@
 			{audioFile} 
 			{audioDuration}
 			{audioOffset}
-			on:uploaded={() => dispatch('uploaded')}
+			on:replace={() => showReplaceForm = true}
 		/>
 	{:else}
 		<!-- Show basic audio info for unprocessed audio -->
@@ -120,22 +107,34 @@
 					</div>
 				</div>
 				<button
-					onclick={deleteAudio}
-					class="text-sm font-medium text-red-600 hover:text-red-500"
+					onclick={() => showReplaceForm = true}
+					class="text-sm font-medium text-blue-600 hover:text-blue-500"
 				>
-					Remove
+					Replace
 				</button>
 			</div>
 			
 			<!-- Basic Audio Player -->
 			<audio controls class="w-full mt-4">
-				<source src="http://localhost:3000/api/files/{projectId}/{audioFile}" />
+				<source src="{getApiUrl()}/api/files/{projectId}/{audioFile}" />
 			</audio>
 		</div>
 	{/if}
 {:else}
 	<!-- YouTube URL Upload Form -->
 	<div class="bg-white rounded-lg border border-gray-200 p-6">
+		{#if showReplaceForm}
+			<div class="flex items-center justify-between mb-4">
+				<h3 class="text-sm font-medium text-gray-900">Replace Audio Track</h3>
+				<button
+					onclick={() => showReplaceForm = false}
+					class="text-sm text-gray-500 hover:text-gray-700"
+				>
+					Cancel
+				</button>
+			</div>
+		{/if}
+		
 		<!-- YouTube URL Only -->
 		<div class="space-y-4">
 			<div>

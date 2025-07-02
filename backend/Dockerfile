@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     zsh \
     wget \
+    jq \
+    bc \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Miniconda (with architecture detection)

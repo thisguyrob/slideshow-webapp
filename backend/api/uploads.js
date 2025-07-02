@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { promisify } from 'util';
+import crypto from 'crypto';
 const execFile = promisify(spawn);
 
 const router = express.Router();
@@ -33,6 +34,50 @@ async function convertHeicToJpg(inputPath, outputPath) {
     convert.on('error', (err) => {
       reject(new Error(`Failed to start ImageMagick: ${err.message}`));
     });
+  });
+}
+
+// Function to pre-process image to MP4
+async function preprocessImageToMp4(imagePath, projectDir) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Generate unique filename based on image content hash
+      const imageBuffer = await fs.readFile(imagePath);
+      const hash = crypto.createHash('md5').update(imageBuffer).digest('hex').substring(0, 8);
+      const tempVideoFilename = `temp_${hash}.mp4`;
+      const tempVideoPath = path.join(projectDir, tempVideoFilename);
+      
+      const preprocessScript = path.join(__dirname, '../preprocess_image.sh');
+      const preprocess = spawn('bash', [preprocessScript, imagePath, tempVideoPath]);
+      
+      let output = '';
+      let errorOutput = '';
+      
+      preprocess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      preprocess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      preprocess.on('close', (code) => {
+        if (code === 0) {
+          resolve({
+            tempVideo: tempVideoFilename,
+            hash: hash
+          });
+        } else {
+          reject(new Error(`Pre-processing failed: ${errorOutput || output}`));
+        }
+      });
+      
+      preprocess.on('error', (err) => {
+        reject(new Error(`Failed to start pre-processing: ${err.message}`));
+      });
+    } catch (err) {
+      reject(new Error(`Failed to read image for hashing: ${err.message}`));
+    }
   });
 }
 
@@ -95,6 +140,7 @@ router.post('/:projectId/images', (req, res, next) => {
     
     // Process uploaded files and convert HEIC/HEIF to JPG
     const uploadedFiles = [];
+    const projectDir = path.join(PROJECTS_DIR, req.params.projectId);
     
     for (const file of req.files) {
       const fileExt = path.extname(file.filename).toLowerCase();
@@ -103,6 +149,8 @@ router.post('/:projectId/images', (req, res, next) => {
         size: file.size,
         url: `/api/files/${req.params.projectId}/${file.filename}`
       };
+      
+      let imagePath = file.path;
       
       // Convert HEIC/HEIF files to JPG
       if (fileExt === '.heic' || fileExt === '.heif') {
@@ -128,6 +176,8 @@ router.post('/:projectId/images', (req, res, next) => {
             originalName: file.filename
           };
           
+          imagePath = jpgPath;
+          
           console.log(`Successfully converted ${file.filename} to ${jpgFilename}`);
         } catch (conversionError) {
           console.error(`Failed to convert ${file.filename}:`, conversionError);
@@ -136,17 +186,50 @@ router.post('/:projectId/images', (req, res, next) => {
         }
       }
       
+      // Pre-process image to MP4 (only for successfully processed images)
+      if (!processedFile.conversionError) {
+        try {
+          console.log(`Pre-processing ${processedFile.name} to MP4...`);
+          const { tempVideo, hash } = await preprocessImageToMp4(imagePath, projectDir);
+          processedFile.tempVideo = tempVideo;
+          processedFile.hash = hash;
+          console.log(`Created temp video: ${tempVideo}`);
+        } catch (preprocessError) {
+          console.error(`Failed to pre-process ${processedFile.name}:`, preprocessError);
+          processedFile.preprocessError = preprocessError.message;
+        }
+      }
+      
       uploadedFiles.push(processedFile);
     }
     
-    // Update project metadata
+    // Update project metadata with image mappings
     const metadataPath = path.join(PROJECTS_DIR, req.params.projectId, 'metadata.json');
     try {
       const metadataContent = await fs.readFile(metadataPath, 'utf-8');
       const metadata = JSON.parse(metadataContent);
       metadata.updatedAt = new Date().toISOString();
+      
+      // Initialize images array if it doesn't exist
+      if (!metadata.images) {
+        metadata.images = [];
+      }
+      
+      // Add new images to metadata
+      for (const file of uploadedFiles) {
+        if (file.tempVideo) {
+          metadata.images.push({
+            originalName: file.name,
+            tempVideo: file.tempVideo,
+            hash: file.hash,
+            uploadedAt: new Date().toISOString()
+          });
+        }
+      }
+      
       await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
     } catch (err) {
+      console.error('Failed to update metadata:', err);
       // Metadata update failed, but files are uploaded
     }
     
@@ -385,8 +468,25 @@ router.post('/:projectId/youtube-download', async (req, res) => {
     console.log(`[${projectId}] YouTube URL: ${url}`);
     console.log(`[${projectId}] Start time: ${startTime}`);
     
+    // Generate unique filename with timestamp to avoid caching issues
+    const timestamp = Date.now();
+    const audioFileName = `audio_${timestamp}.mp3`;
+    const tempFileName = `temp_${timestamp}.mp3`;
+    
+    // Check if there's an existing audio file to delete later
+    let existingAudioFile = null;
+    try {
+      const metadataContent = await fs.readFile(path.join(projectDir, 'metadata.json'), 'utf-8');
+      const metadata = JSON.parse(metadataContent);
+      if (metadata.audioFile && metadata.audioFile !== 'song.mp3') {
+        existingAudioFile = metadata.audioFile;
+      }
+    } catch (err) {
+      // No existing metadata or audio file
+    }
+    
     // Download audio using yt-dlp
-    const outputPath = path.join(projectDir, 'song.mp3');
+    const outputPath = path.join(projectDir, audioFileName);
     
     console.log(`[${projectId}] Step 1: Downloading audio with yt-dlp...`);
     
@@ -395,7 +495,7 @@ router.post('/:projectId/youtube-download', async (req, res) => {
       '--extract-audio',
       '--audio-format', 'mp3',
       '--audio-quality', '0',
-      '-o', 'song.%(ext)s'
+      '-o', tempFileName.replace('.mp3', '.%(ext)s')
     ];
     
     // Add start time trimming if not default
@@ -433,11 +533,11 @@ router.post('/:projectId/youtube-download', async (req, res) => {
           console.log(`[${projectId}] Step 2: Ensuring MP3 format with ffmpeg...`);
           
           const ffmpegArgs = [
-            '-i', 'song.mp3',
+            '-i', tempFileName,
             '-acodec', 'mp3',
             '-ab', '320k',
             '-y', // Overwrite output file
-            'song_converted.mp3'
+            audioFileName
           ];
           
           const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
@@ -463,11 +563,11 @@ router.post('/:projectId/youtube-download', async (req, res) => {
             if (ffmpegCode === 0) {
               console.log(`[${projectId}] Step 2 completed: Audio converted to MP3`);
               
-              // Replace original with converted version
+              // Clean up temp file
               try {
-                await fs.rename(path.join(projectDir, 'song_converted.mp3'), path.join(projectDir, 'song.mp3'));
+                await fs.unlink(path.join(projectDir, tempFileName));
               } catch (err) {
-                console.log(`[${projectId}] Note: Could not rename converted file, using original`);
+                console.log(`[${projectId}] Note: Could not delete temp file`);
               }
               
               // Check if this is a Scavenger Hunt project
@@ -487,7 +587,7 @@ router.post('/:projectId/youtube-download', async (req, res) => {
                 
                 // First, get the duration of the downloaded audio
                 const ffprobe = spawn('ffprobe', [
-                  '-i', 'song.mp3',
+                  '-i', audioFileName,
                   '-show_entries', 'format=duration',
                   '-v', 'quiet',
                   '-of', 'csv=p=0'
@@ -555,7 +655,7 @@ router.post('/:projectId/youtube-download', async (req, res) => {
                       
                       // Clean up the invalid audio file so next attempt can download fresh
                       try {
-                        await fs.unlink(path.join(projectDir, 'song.mp3'));
+                        await fs.unlink(path.join(projectDir, audioFileName));
                         console.log(`[${projectId}] Cleaned up invalid audio file`);
                       } catch (unlinkErr) {
                         console.log(`[${projectId}] Could not clean up audio file: ${unlinkErr.message}`);
@@ -574,13 +674,14 @@ router.post('/:projectId/youtube-download', async (req, res) => {
                     
                     // For Scavenger Hunt: yt-dlp already applied the start time,
                     // so we just need to trim to 73 seconds from the beginning
+                    const trimmedFileName = `audio_trimmed_${timestamp}.mp3`;
                     const trimArgs = [
-                      '-i', 'song.mp3',
+                      '-i', audioFileName,
                       '-t', '73',
                       '-acodec', 'mp3',
                       '-ab', '320k',
                       '-y',
-                      'song_trimmed.mp3'
+                      trimmedFileName
                     ];
                 
                     const trimFfmpeg = spawn('ffmpeg', trimArgs, {
@@ -608,9 +709,10 @@ router.post('/:projectId/youtube-download', async (req, res) => {
                     
                     // Replace original with trimmed version
                     try {
-                      await fs.rename(path.join(projectDir, 'song_trimmed.mp3'), path.join(projectDir, 'song.mp3'));
+                      await fs.unlink(path.join(projectDir, audioFileName));
+                      await fs.rename(path.join(projectDir, trimmedFileName), path.join(projectDir, audioFileName));
                     } catch (err) {
-                      console.log(`[${projectId}] Error: Could not rename trimmed file`);
+                      console.log(`[${projectId}] Error: Could not replace with trimmed file`);
                     }
                     
                     // Update metadata
@@ -621,17 +723,37 @@ router.post('/:projectId/youtube-download', async (req, res) => {
                       metadata.audioOffset = startTime;
                       metadata.audioTrimmed = true;
                       metadata.audioDuration = 73;
+                      metadata.audioFile = audioFileName;
                       await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
                     } catch (err) {
                       console.log(`[${projectId}] Warning: Could not update metadata`);
                     }
                     
+                    // Delete old audio file if exists
+                    if (existingAudioFile) {
+                      try {
+                        await fs.unlink(path.join(projectDir, existingAudioFile));
+                        console.log(`[${projectId}] Deleted old audio file: ${existingAudioFile}`);
+                      } catch (err) {
+                        console.log(`[${projectId}] Could not delete old audio file: ${existingAudioFile}`);
+                      }
+                    }
+                    
+                    // Also delete legacy song.mp3 if exists
+                    try {
+                      await fs.unlink(path.join(projectDir, 'song.mp3'));
+                      console.log(`[${projectId}] Deleted legacy song.mp3`);
+                    } catch (err) {
+                      // Ignore - file might not exist
+                    }
+                    
                     res.json({
                       message: 'Audio downloaded and trimmed successfully for Scavenger Hunt',
                       file: {
-                        name: 'song.mp3',
-                        url: `/api/files/${projectId}/song.mp3`
+                        name: audioFileName,
+                        url: `/api/files/${projectId}/${audioFileName}`
                       },
+                      audioFile: audioFileName,
                       audioOffset: startTime,
                       audioTrimmed: true,
                       audioDuration: 73
@@ -816,6 +938,7 @@ except Exception as e:
                   const metadataContent = await fs.readFile(metadataPath, 'utf-8');
                   const metadata = JSON.parse(metadataContent);
                   metadata.updatedAt = new Date().toISOString();
+                  metadata.audioFile = audioFileName;
                   
                   if (startTime && startTime !== '0:00' && startTime !== '00:00') {
                     metadata.audioOffset = startTime;
@@ -831,6 +954,24 @@ except Exception as e:
                   console.log(`[${projectId}] Warning: Could not update metadata`);
                 }
                 
+                // Delete old audio file if exists
+                if (existingAudioFile) {
+                  try {
+                    await fs.unlink(path.join(projectDir, existingAudioFile));
+                    console.log(`[${projectId}] Deleted old audio file: ${existingAudioFile}`);
+                  } catch (err) {
+                    console.log(`[${projectId}] Could not delete old audio file: ${existingAudioFile}`);
+                  }
+                }
+                
+                // Also delete legacy song.mp3 if exists
+                try {
+                  await fs.unlink(path.join(projectDir, 'song.mp3'));
+                  console.log(`[${projectId}] Deleted legacy song.mp3`);
+                } catch (err) {
+                  // Ignore - file might not exist
+                }
+                
                 if (!responseStepSent) {
                   responseStepSent = true;
                   res.json({
@@ -838,9 +979,10 @@ except Exception as e:
                       ? 'Audio downloaded and processed successfully'
                       : 'Audio downloaded successfully (downbeat detection unavailable)',
                     file: {
-                      name: 'song.mp3',
-                      url: `/api/files/${projectId}/song.mp3`
+                      name: audioFileName,
+                      url: `/api/files/${projectId}/${audioFileName}`
                     },
+                    audioFile: audioFileName,
                     audioOffset: startTime,
                     downbeatsDetected: madmomSuccess,
                     downbeats: madmomSuccess ? madmomResult.downbeats : undefined,
@@ -975,6 +1117,8 @@ router.post('/:projectId/scavenger-hunt-slot', upload.single('images'), async (r
       filename: req.file.filename
     };
 
+    let imagePath = req.file.path;
+
     // Convert HEIC/HEIF files to JPG
     const fileExt = path.extname(req.file.filename).toLowerCase();
     if (fileExt === '.heic' || fileExt === '.heif') {
@@ -1000,6 +1144,8 @@ router.post('/:projectId/scavenger-hunt-slot', upload.single('images'), async (r
           originalName: req.file.filename
         };
         
+        imagePath = jpgPath;
+        
         console.log(`Successfully converted ${req.file.filename} to ${jpgFilename}`);
       } catch (conversionError) {
         console.error(`Failed to convert ${req.file.filename}:`, conversionError);
@@ -1009,12 +1155,26 @@ router.post('/:projectId/scavenger-hunt-slot', upload.single('images'), async (r
       }
     }
 
+    // Pre-process image to MP4
+    try {
+      console.log(`Pre-processing ${processedFile.name} to MP4...`);
+      const { tempVideo, hash } = await preprocessImageToMp4(imagePath, projectDir);
+      processedFile.tempVideo = tempVideo;
+      processedFile.hash = hash;
+      console.log(`Created temp video: ${tempVideo}`);
+    } catch (preprocessError) {
+      console.error(`Failed to pre-process ${processedFile.name}:`, preprocessError);
+      // Continue without pre-processing for scavenger hunt
+    }
+
     // Update slot data
     const slotIndex = parseInt(slot) - 1;
     slots[slotIndex] = {
       id: parseInt(slot),
       filename: processedFile.filename,
-      image: `/api/uploads/${projectId}/images/${processedFile.filename}`,
+      image: `/api/files/${projectId}/${processedFile.filename}`,
+      tempVideo: processedFile.tempVideo,
+      hash: processedFile.hash,
       uploadedAt: new Date().toISOString()
     };
 
@@ -1035,7 +1195,10 @@ router.post('/:projectId/scavenger-hunt-slot', upload.single('images'), async (r
       message: 'Image uploaded to slot successfully',
       slot: parseInt(slot),
       filename: processedFile.filename,
-      file: processedFile
+      file: {
+        ...processedFile,
+        url: `/api/files/${projectId}/${processedFile.filename}`
+      }
     });
   } catch (error) {
     console.error('Error uploading image to slot:', error);
@@ -1067,6 +1230,15 @@ router.get('/:projectId/scavenger-hunt-slots', async (req, res) => {
     try {
       const slotsContent = await fs.readFile(slotsPath, 'utf-8');
       slots = JSON.parse(slotsContent);
+      
+      // Fix any incorrect image URLs
+      slots = slots.map(slot => {
+        if (slot.image && slot.filename) {
+          // Correct the URL format to use /api/files/
+          slot.image = `/api/files/${projectId}/${slot.filename}`;
+        }
+        return slot;
+      });
     } catch (err) {
       // slots.json doesn't exist yet, return empty slots
     }
@@ -1078,11 +1250,52 @@ router.get('/:projectId/scavenger-hunt-slots', async (req, res) => {
   }
 });
 
+// Save reordered slots for scavenger hunt projects
+router.post('/:projectId/save-slots', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { slots } = req.body;
+    const projectDir = path.join(PROJECTS_DIR, projectId);
+    
+    // Check if project exists and is a scavenger hunt
+    const metadataPath = path.join(projectDir, 'metadata.json');
+    try {
+      const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+      const metadata = JSON.parse(metadataContent);
+      if (metadata.type !== 'Scavenger-Hunt') {
+        return res.status(400).json({ error: 'This endpoint is only for Scavenger Hunt projects' });
+      }
+    } catch (err) {
+      return res.status(404).json({ error: 'Project not found or invalid' });
+    }
+    
+    // Save the slots data
+    const slotsPath = path.join(projectDir, 'slots.json');
+    await fs.writeFile(slotsPath, JSON.stringify(slots, null, 2));
+    
+    // Update project metadata
+    try {
+      const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+      const metadata = JSON.parse(metadataContent);
+      metadata.updatedAt = new Date().toISOString();
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    } catch (err) {
+      // Metadata update failed, but slots are saved
+    }
+    
+    res.json({ message: 'Slots saved successfully' });
+  } catch (error) {
+    console.error('Error saving slots:', error);
+    res.status(500).json({ error: 'Failed to save slots' });
+  }
+});
+
 // Delete a file from a project
 router.delete('/:projectId/files/:filename', async (req, res) => {
   try {
     const { projectId, filename } = req.params;
-    const filePath = path.join(PROJECTS_DIR, projectId, filename);
+    const projectDir = path.join(PROJECTS_DIR, projectId);
+    const filePath = path.join(projectDir, filename);
     
     // Check if file exists
     try {
@@ -1091,16 +1304,42 @@ router.delete('/:projectId/files/:filename', async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
     
+    // Delete the file
     await fs.unlink(filePath);
     
-    // Update project metadata
-    const metadataPath = path.join(PROJECTS_DIR, projectId, 'metadata.json');
+    // Update project metadata and clean up temp video
+    const metadataPath = path.join(projectDir, 'metadata.json');
     try {
       const metadataContent = await fs.readFile(metadataPath, 'utf-8');
       const metadata = JSON.parse(metadataContent);
+      
+      // Find and delete associated temp video
+      if (metadata.images && Array.isArray(metadata.images)) {
+        const imageIndex = metadata.images.findIndex(img => img.originalName === filename);
+        if (imageIndex !== -1) {
+          const tempVideo = metadata.images[imageIndex].tempVideo;
+          if (tempVideo) {
+            try {
+              await fs.unlink(path.join(projectDir, tempVideo));
+              console.log(`Deleted temp video: ${tempVideo}`);
+            } catch (err) {
+              console.log(`Could not delete temp video ${tempVideo}: ${err.message}`);
+            }
+          }
+          // Remove from metadata
+          metadata.images.splice(imageIndex, 1);
+        }
+      }
+      
+      // Also update imageOrder if present
+      if (metadata.imageOrder && Array.isArray(metadata.imageOrder)) {
+        metadata.imageOrder = metadata.imageOrder.filter(img => img !== filename);
+      }
+      
       metadata.updatedAt = new Date().toISOString();
       await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
     } catch (err) {
+      console.error('Failed to update metadata:', err);
       // Metadata update failed, but file is deleted
     }
     

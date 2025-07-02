@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import ProjectList from '$lib/components/ProjectList.svelte';
 	import CreateProject from '$lib/components/CreateProject.svelte';
+	import { getApiUrl } from '$lib/config';
 	
 	let projects = $state<any[]>([]);
 	let loading = $state(true);
@@ -9,7 +10,8 @@
 	
 	async function loadProjects() {
 		try {
-			const response = await fetch('http://localhost:3000/api/projects');
+			const apiUrl = getApiUrl();
+			const response = await fetch(`${apiUrl}/api/projects`);
 			if (response.ok) {
 				projects = await response.json();
 			}

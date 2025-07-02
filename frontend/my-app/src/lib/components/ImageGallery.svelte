@@ -2,6 +2,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
+	import { getApiUrl } from '$lib/config';
 	
 	interface Props {
 		project: any;
@@ -30,7 +31,7 @@
 		if (!confirm(`Delete ${selectedImages.size} selected images?`)) return;
 		
 		const promises = Array.from(selectedImages).map(filename =>
-			fetch(`http://localhost:3000/api/upload/${project.id}/files/${filename}`, {
+			fetch(`${getApiUrl()}/api/upload/${project.id}/files/${filename}`, {
 				method: 'DELETE'
 			})
 		);
@@ -91,7 +92,7 @@
 				typeof img === 'string' ? img : img.name
 			);
 			
-			const response = await fetch(`http://localhost:3000/api/projects/${project.id}/reorder`, {
+			const response = await fetch(`${getApiUrl()}/api/projects/${project.id}/reorder`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -111,7 +112,7 @@
 	
 	function getImageUrl(filename: string | {name: string}) {
 		const imageName = typeof filename === 'string' ? filename : filename.name;
-		return `http://localhost:3000/api/files/${project.id}/${imageName}`;
+		return `${getApiUrl()}/api/files/${project.id}/${imageName}`;
 	}
 </script>
 

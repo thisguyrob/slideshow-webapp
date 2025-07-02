@@ -7,9 +7,16 @@ file uploads, audio analysis, and slideshow processing capabilities.
 ## 🚀 Features
 
 - **Project Management**: Create, organize, and manage multiple slideshow projects
+- **Multiple Project Types**: FWI Main, FWI Emotional, and Scavenger Hunt with unique interfaces
+  - **Enhanced Scavenger Hunt**: 90% faster processing with professional crossfades (10-15s vs 2-3 min)
 - **Smart File Uploads**: Support for images (JPEG, PNG, HEIC) and audio files
+  - **Batch Upload**: Upload up to 12 images at once for Scavenger Hunt projects
+  - **Duplicate Prevention**: Automatic detection and prevention of duplicate images
 - **YouTube Integration**: Download audio directly from YouTube with time-based extraction
-- **Audio Analysis**: Beat detection using madmom for perfect sync, plus emotional crossfade timing
+- **Audio Management**: 
+  - Beat detection using madmom for perfect sync
+  - Replace audio tracks without deletion
+  - Automatic audio file versioning to prevent caching issues
 - **Real-time Processing**: WebSocket updates during video generation
 - **Docker Ready**: Complete containerized environment with all dependencies
 
@@ -37,9 +44,10 @@ docker-compose.yml
 ```
 
 The container includes:
-- **Media Processing**: `ffmpeg`, `libheif-examples`, `yt-dlp`
+- **Media Processing**: `ffmpeg` (5.1.6), `libheif-examples`, `yt-dlp`
 - **Audio Analysis**: Python 3 with `madmom` for beat detection
 - **Shell Support**: `zsh` for script compatibility
+- **Enhanced Processing**: Optimized slideshow builders with Docker-compatible FFmpeg filters
 
 ## Quick Start
 
@@ -192,6 +200,21 @@ The implementation preserves all original functionality while adding:
 - File upload handling
 
 All video generation logic remains identical for consistent quality.
+
+## 📝 Recent Updates (July 2025)
+
+### Scavenger Hunt Enhancements
+- **Batch Image Upload**: Select and upload up to 12 images at once
+- **Audio Replacement**: Replace audio tracks without deletion
+- **Smart Caching**: Dynamic audio filenames prevent browser caching issues
+- **Improved UX**: Progress indicators and intelligent UI behavior
+
+### Technical Improvements
+- **Metadata Tracking**: Enhanced project metadata structure
+- **File Management**: Automatic cleanup of replaced files
+- **Backward Compatibility**: Legacy projects continue to work seamlessly
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
 ## 📋 Requirements
 

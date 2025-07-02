@@ -166,6 +166,14 @@ router.get('/:projectId', async (req, res) => {
       // No audio.txt file
     }
     
+    // If metadata has audioFile, use that instead of scanning
+    if (metadata.audioFile && files.includes(metadata.audioFile)) {
+      audioFile = {
+        name: metadata.audioFile,
+        url: `/api/files/${projectId}/${metadata.audioFile}`
+      };
+    }
+    
     res.json({
       ...metadata,
       images: images.sort((a, b) => a.name.localeCompare(b.name)),
@@ -254,18 +262,60 @@ router.post('/:projectId/reorder', async (req, res) => {
       return res.status(400).json({ error: 'Images array is required' });
     }
     
-    // Rename images with new order
-    for (let i = 0; i < images.length; i++) {
-      const oldPath = path.join(projectDir, images[i]);
-      const ext = path.extname(images[i]);
-      const newName = `${String(i + 1).padStart(3, '0')}-${images[i]}`;
-      const newPath = path.join(projectDir, newName);
+    // Update metadata with new image order
+    const metadataPath = path.join(projectDir, 'metadata.json');
+    try {
+      const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+      const metadata = JSON.parse(metadataContent);
       
-      try {
-        await fs.rename(oldPath, newPath);
-      } catch (err) {
-        console.error(`Error renaming ${oldPath} to ${newPath}:`, err);
+      // Create a map of original names to temp video info
+      const tempVideoMap = new Map();
+      if (metadata.images && Array.isArray(metadata.images)) {
+        metadata.images.forEach(img => {
+          if (img.originalName && img.tempVideo) {
+            tempVideoMap.set(img.originalName, {
+              tempVideo: img.tempVideo,
+              hash: img.hash,
+              uploadedAt: img.uploadedAt
+            });
+          }
+        });
       }
+      
+      // Rebuild images array in new order
+      metadata.images = images.map(imageName => {
+        const tempInfo = tempVideoMap.get(imageName);
+        if (tempInfo) {
+          return {
+            originalName: imageName,
+            ...tempInfo
+          };
+        }
+        // If no temp video info, just store the name
+        return {
+          originalName: imageName,
+          uploadedAt: new Date().toISOString()
+        };
+      });
+      
+      metadata.updatedAt = new Date().toISOString();
+      metadata.imageOrder = images; // Also store simple order array
+      
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    } catch (err) {
+      console.error('Error updating metadata:', err);
+      // If no metadata exists, create it
+      const metadata = {
+        id: projectId,
+        images: images.map(imageName => ({
+          originalName: imageName,
+          uploadedAt: new Date().toISOString()
+        })),
+        imageOrder: images,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
     }
     
     res.json({ message: 'Images reordered successfully' });

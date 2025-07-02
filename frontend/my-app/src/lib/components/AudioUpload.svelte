@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { getApiUrl } from '$lib/config';
 	
 	interface Props {
 		projectId: string;
 		hasAudio: boolean;
 		audioFile?: string;
+		hideStartTime?: boolean;
 	}
 	
-	let { projectId, hasAudio, audioFile }: Props = $props();
+	let { projectId, hasAudio, audioFile, hideStartTime = false }: Props = $props();
 	const dispatch = createEventDispatcher();
 	
 	let uploading = $state(false);
@@ -32,7 +34,7 @@
 		formData.append('audio', file);
 		
 		try {
-			const response = await fetch(`http://localhost:3000/api/upload/${projectId}/audio`, {
+			const response = await fetch(`${getApiUrl()}/api/uploads/${projectId}/audio`, {
 				method: 'POST',
 				body: formData
 			});
@@ -61,7 +63,7 @@
 		
 		try {
 			// Save URL first
-			const response = await fetch(`http://localhost:3000/api/upload/${projectId}/youtube`, {
+			const response = await fetch(`${getApiUrl()}/api/uploads/${projectId}/youtube`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -71,14 +73,14 @@
 			
 			if (response.ok) {
 				// Start download and processing pipeline
-				const downloadResponse = await fetch(`http://localhost:3000/api/upload/${projectId}/youtube-download`, {
+				const downloadResponse = await fetch(`${getApiUrl()}/api/uploads/${projectId}/youtube-download`, {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json'
 					},
 					body: JSON.stringify({ 
 						url: youtubeUrl,
-						startTime: startTime || '0:00'
+						startTime: hideStartTime ? '0:00' : (startTime || '0:00')
 					})
 				});
 				
@@ -105,7 +107,7 @@
 		if (!confirm('Delete the audio file?')) return;
 		
 		try {
-			const response = await fetch(`http://localhost:3000/api/upload/${projectId}/files/${audioFile}`, {
+			const response = await fetch(`${getApiUrl()}/api/uploads/${projectId}/files/${audioFile}`, {
 				method: 'DELETE'
 			});
 			
@@ -140,7 +142,7 @@
 		
 		<!-- Audio Player -->
 		<audio controls class="w-full mt-4">
-			<source src="http://localhost:3000/api/files/{projectId}/{audioFile}" />
+			<source src="{getApiUrl()}/api/files/{projectId}/{audioFile}" />
 		</audio>
 	{:else}
 		<!-- Upload Options -->
@@ -200,22 +202,24 @@
 					/>
 				</div>
 				
-				<div>
-					<label for="start-time" class="block text-sm font-medium text-gray-700 mb-2">
-						Start Time (optional)
-					</label>
-					<input
-						id="start-time"
-						type="text"
-						bind:value={startTime}
-						placeholder="0:00 (mm:ss or hh:mm:ss)"
-						class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-						disabled={uploading}
-					/>
-					<p class="text-xs text-gray-500 mt-1">
-						Specify where to start extracting audio (default: 0:00)
-					</p>
-				</div>
+				{#if !hideStartTime}
+					<div>
+						<label for="start-time" class="block text-sm font-medium text-gray-700 mb-2">
+							Start Time (optional)
+						</label>
+						<input
+							id="start-time"
+							type="text"
+							bind:value={startTime}
+							placeholder="0:00 (mm:ss or hh:mm:ss)"
+							class="block w-full rounded-md border-0 py-1.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+							disabled={uploading}
+						/>
+						<p class="text-xs text-gray-500 mt-1">
+							Specify where to start extracting audio (default: 0:00)
+						</p>
+					</div>
+				{/if}
 				
 				<button
 					onclick={handleYouTubeSubmit}

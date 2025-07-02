@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { getApiUrl } from '$lib/config';
 	
 	interface Project {
 		id: string;
@@ -32,7 +33,7 @@
 		if (!confirm('Are you sure you want to delete this project?')) return;
 		
 		try {
-			const response = await fetch(`http://localhost:3000/api/projects/${projectId}`, {
+			const response = await fetch(`${getApiUrl()}/api/projects/${projectId}`, {
 				method: 'DELETE'
 			});
 			

@@ -24,7 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 console.log('Registering API routes...');
 app.use('/api/projects', projectRoutes);
 console.log('Projects routes registered');
-app.use('/api/upload', uploadRoutes);
+app.use('/api/uploads', uploadRoutes);
 console.log('Upload routes registered');
 app.use('/api/process', processRoutes);
 console.log('Process routes registered');

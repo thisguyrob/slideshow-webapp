@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getApiUrl } from '$lib/config';
+	
 	interface Props {
 		project: any;
 	}
@@ -13,7 +15,7 @@
 	
 	async function cancelProcessing() {
 		try {
-			const response = await fetch(`http://localhost:3000/api/process/${project.id}/cancel`, {
+			const response = await fetch(`${getApiUrl()}/api/process/${project.id}/cancel`, {
 				method: 'POST'
 			});
 			

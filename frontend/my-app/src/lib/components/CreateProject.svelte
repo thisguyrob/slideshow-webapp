@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { getApiUrl } from '$lib/config';
 	
 	const dispatch = createEventDispatcher();
 	
@@ -19,7 +20,7 @@
 		error = '';
 		
 		try {
-			const response = await fetch('http://localhost:3000/api/projects', {
+			const response = await fetch(`${getApiUrl()}/api/projects`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'

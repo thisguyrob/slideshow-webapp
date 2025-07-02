@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { getApiUrl } from '$lib/config';
 	import ScavengerHuntImageGrid from '$lib/components/ScavengerHuntImageGrid.svelte';
 	import ScavengerHuntAudioUpload from '$lib/components/ScavengerHuntAudioUpload.svelte';
 	import SlideshowViewer from '$lib/components/SlideshowViewer.svelte';
@@ -37,7 +38,7 @@
 	
 	async function loadSlots() {
 		try {
-			const response = await fetch(`http://localhost:3000/api/uploads/${projectId}/scavenger-hunt-slots`);
+			const response = await fetch(`${getApiUrl()}/api/uploads/${projectId}/scavenger-hunt-slots`);
 			if (response.ok) {
 				const data = await response.json();
 				slots = data.slots;
@@ -51,7 +52,7 @@
 
 	async function loadProject() {
 		try {
-			const response = await fetch(`http://localhost:3000/api/projects/${projectId}`);
+			const response = await fetch(`${getApiUrl()}/api/projects/${projectId}`);
 			if (response.ok) {
 				project = await response.json();
 				// Check if video exists and is up-to-date
@@ -99,12 +100,15 @@
 		loadProject();
 		
 		// Set up WebSocket for real-time updates
-		const ws = new WebSocket('ws://localhost:3000');
+		const hostname = window.location.hostname;
+		const ws = new WebSocket(`ws://${hostname}:3000`);
 		
 		ws.onmessage = (event) => {
 			const data = JSON.parse(event.data);
 			if (data.projectId === projectId) {
-				project = { ...project, ...data };
+				// Preserve the project type when updating from WebSocket
+				const currentType = project.type;
+				project = { ...project, ...data, type: currentType };
 				
 				// Handle rendering completion
 				if (data.type === 'progress' && data.progress === 100) {
@@ -143,7 +147,7 @@
 	
 	async function startProcessing(mode: 'normal' | 'emotional' = 'normal') {
 		try {
-			const response = await fetch(`http://localhost:3000/api/process/${projectId}/process`, {
+			const response = await fetch(`${getApiUrl()}/api/process/${projectId}/process`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -162,7 +166,7 @@
 	async function renderSlideshow() {
 		isRendering = true;
 		try {
-			const response = await fetch(`http://localhost:3000/api/process/${projectId}/process`, {
+			const response = await fetch(`${getApiUrl()}/api/process/${projectId}/process`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -184,7 +188,7 @@
 	}
 
 	function downloadVideo() {
-		window.open(`http://localhost:3000/api/process/${projectId}/download`, '_blank');
+		window.open(`${getApiUrl()}/api/process/${projectId}/download`, '_blank');
 	}
 
 	function handleSlotsUpdate(updatedSlots) {
@@ -219,7 +223,7 @@
 					</div>
 					
                                        {#if slots.some(slot => slot.image) && project.audioTrimmed}
-						<div class="flex items-center space-x-3">
+						<div class="flex items-center">
 							{#if isRendering}
 								<button
 									disabled
@@ -250,7 +254,7 @@
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 									</svg>
-{project.video ? 'Re-render Slideshow' : 'Download Slideshow'}
+{project.video ? 'Re-render Slideshow' : 'Render Slideshow'}
 								</button>
 							{/if}
 						</div>
@@ -283,22 +287,25 @@
                 <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                         {#if activeTab === 'images'}
                                 <div class="space-y-8">
-                                        <!-- Audio Upload Section -->
-                                        <div>
-                                                <h2 class="text-lg font-medium text-gray-900 mb-4">Audio</h2>
-                                                <ScavengerHuntAudioUpload
-                                                        {projectId}
-                                                        hasAudio={!!project.audio}
-                                                        audioFile={project.audio}
-                                                        audioTrimmed={project.audioTrimmed}
-                                                        audioDuration={project.audioDuration}
-                                                        audioOffset={project.audioOffset}
-                                                        on:uploaded={handleAudioUploaded}
-                                                />
-                                        </div>
-
-                                        {#if project.audioTrimmed}
-                                                <!-- Image Grid Section -->
+                                        {#if !project.audioTrimmed}
+                                                <!-- Audio Upload Section (shown first when no audio) -->
+                                                <div>
+                                                        <h2 class="text-lg font-medium text-gray-900 mb-4">Audio</h2>
+                                                        <ScavengerHuntAudioUpload
+                                                                {projectId}
+                                                                hasAudio={!!project.audio}
+                                                                audioFile={project.audio}
+                                                                audioTrimmed={project.audioTrimmed}
+                                                                audioDuration={project.audioDuration}
+                                                                audioOffset={project.audioOffset}
+                                                                on:uploaded={handleAudioUploaded}
+                                                        />
+                                                </div>
+                                                <div class="text-sm text-gray-500">
+                                                        Please process your audio first. The image slots will appear once the audio is ready.
+                                                </div>
+                                        {:else}
+                                                <!-- Image Grid Section (shown first when audio is set) -->
                                                 <div>
                                                         <h2 class="text-lg font-medium text-gray-900 mb-4">Images (12 Slots)</h2>
                                                         <p class="text-sm text-gray-600 mb-6">Upload images to specific slots. Each slot can contain one unique image.</p>
@@ -308,9 +315,19 @@
                                                                 onSlotsUpdate={handleSlotsUpdate}
                                                         />
                                                 </div>
-                                        {:else}
-                                                <div class="text-sm text-gray-500">
-                                                        Please process your audio first. The image slots will appear once the audio is ready.
+                                                
+                                                <!-- Audio Upload Section (shown below images when audio is set) -->
+                                                <div>
+                                                        <h2 class="text-lg font-medium text-gray-900 mb-4">Audio</h2>
+                                                        <ScavengerHuntAudioUpload
+                                                                {projectId}
+                                                                hasAudio={!!project.audio}
+                                                                audioFile={project.audio}
+                                                                audioTrimmed={project.audioTrimmed}
+                                                                audioDuration={project.audioDuration}
+                                                                audioOffset={project.audioOffset}
+                                                                on:uploaded={handleAudioUploaded}
+                                                        />
                                                 </div>
                                         {/if}
                                 </div>

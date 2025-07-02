@@ -15,7 +15,7 @@ const SCRIPTS_DIR = path.join(__dirname, '..');
 const activeProcesses = new Map();
 
 // Send progress update to WebSocket clients
-function sendProgressUpdate(projectId, message, progress = null) {
+function sendProgressUpdate(projectId, message, progress = null, status = 'processing') {
   if (!wss || !wss.clients) return;
   
   const update = {
@@ -23,6 +23,7 @@ function sendProgressUpdate(projectId, message, progress = null) {
     projectId,
     message,
     progress,
+    status,
     timestamp: new Date().toISOString()
   };
   
@@ -105,15 +106,42 @@ router.post('/:projectId/process', async (req, res) => {
       return res.status(400).json({ error: 'No audio file or YouTube URL found' });
     }
     
+    // Check if we have pre-generated videos
+    let hasPreGeneratedVideos = false;
+    try {
+      const metadataPath = path.join(projectDir, 'metadata.json');
+      const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+      const metadata = JSON.parse(metadataContent);
+      
+      if (projectType === 'Scavenger-Hunt') {
+        // For scavenger hunt, check slots.json
+        const slotsPath = path.join(projectDir, 'slots.json');
+        try {
+          const slotsContent = await fs.readFile(slotsPath, 'utf-8');
+          const slots = JSON.parse(slotsContent);
+          hasPreGeneratedVideos = slots.some(slot => slot.tempVideo && files.includes(slot.tempVideo));
+        } catch (err) {
+          // No slots.json or error reading it
+        }
+      } else {
+        // For regular projects, check metadata.images
+        hasPreGeneratedVideos = metadata.images && 
+                               metadata.images.length > 0 && 
+                               metadata.images.some(img => img.tempVideo && files.includes(img.tempVideo));
+      }
+    } catch (err) {
+      // No metadata or error reading it
+    }
+    
     // Determine which script to use
-    console.log(`Project type: ${projectType}, Audio type: ${audioType}`);
+    console.log(`Project type: ${projectType}, Audio type: ${audioType}, Has pre-generated videos: ${hasPreGeneratedVideos}`);
     let scriptName;
     if (projectType === 'Scavenger-Hunt') {
-      scriptName = 'process_scavenger_hunt.sh';
+      scriptName = hasPreGeneratedVideos ? 'scavenger_hunt_slideshow_builder.sh' : 'process_scavenger_hunt.sh';
     } else if (audioType === 'emotional') {
-      scriptName = 'process_single_emotional.sh';
+      scriptName = hasPreGeneratedVideos ? 'process_single_emotional_fast.sh' : 'process_single_emotional.sh';
     } else {
-      scriptName = 'process_single_project.sh';
+      scriptName = hasPreGeneratedVideos ? 'process_single_project_fast.sh' : 'process_single_project.sh';
     }
     const scriptPath = path.join(SCRIPTS_DIR, scriptName);
     console.log(`Selected script: ${scriptName}, Path: ${scriptPath}`);
@@ -151,6 +179,7 @@ router.post('/:projectId/process', async (req, res) => {
     childProcess.stdout.on('data', (data) => {
       const text = data.toString();
       output += text;
+      console.log(`[${projectId}] Script output:`, text.trim());
       
       // Parse progress from script output
       if (text.includes('Processing')) {
@@ -168,6 +197,7 @@ router.post('/:projectId/process', async (req, res) => {
     
     childProcess.stderr.on('data', (data) => {
       errorOutput += data.toString();
+      console.error(`[${projectId}] Script error:`, data.toString().trim());
       sendProgressUpdate(projectId, `Error: ${data.toString().trim()}`);
     });
     
@@ -175,7 +205,7 @@ router.post('/:projectId/process', async (req, res) => {
       activeProcesses.delete(projectId);
       
       if (code === 0) {
-        sendProgressUpdate(projectId, 'Slideshow processing completed!', 100);
+        sendProgressUpdate(projectId, 'Slideshow processing completed!', 100, 'completed');
         
         // Update project metadata
         const metadataPath = path.join(projectDir, 'metadata.json');
@@ -189,18 +219,19 @@ router.post('/:projectId/process', async (req, res) => {
           // Metadata update failed
         }
       } else {
-        sendProgressUpdate(projectId, `Process failed with code ${code}`, -1);
+        sendProgressUpdate(projectId, `Process failed with code ${code}`, -1, 'failed');
       }
     });
     
     childProcess.on('error', (err) => {
       activeProcesses.delete(projectId);
-      sendProgressUpdate(projectId, `Process error: ${err.message}`, -1);
+      sendProgressUpdate(projectId, `Process error: ${err.message}`, -1, 'failed');
     });
     
     res.json({
       message: 'Slideshow processing started',
-      projectId
+      projectId,
+      status: 'processing'
     });
   } catch (error) {
     console.error('Error starting slideshow process:', error);
@@ -231,7 +262,7 @@ router.post('/:projectId/cancel', (req, res) => {
   
   childProcess.kill('SIGTERM');
   activeProcesses.delete(projectId);
-  sendProgressUpdate(projectId, 'Process cancelled by user', -1);
+  sendProgressUpdate(projectId, 'Process cancelled by user', -1, 'cancelled');
   
   res.json({ message: 'Process cancelled successfully' });
 });

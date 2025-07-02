@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { getApiUrl } from '$lib/config';
 	
 	interface Props {
 		projectId: string;
@@ -78,7 +79,7 @@
 				uploading = false;
 			});
 			
-			xhr.open('POST', `http://localhost:3000/api/upload/${projectId}/images`);
+			xhr.open('POST', `${getApiUrl()}/api/upload/${projectId}/images`);
 			xhr.send(formData);
 		} catch (error) {
 			console.error('Upload error:', error);

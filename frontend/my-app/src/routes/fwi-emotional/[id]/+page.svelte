@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { getApiUrl } from '$lib/config';
 	import ImageUpload from '$lib/components/ImageUpload.svelte';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
 	import AudioUpload from '$lib/components/AudioUpload.svelte';
@@ -17,7 +18,7 @@
 	
 	async function loadProject() {
 		try {
-			const response = await fetch(`http://localhost:3000/api/projects/${projectId}`);
+			const response = await fetch(`${getApiUrl()}/api/projects/${projectId}`);
 			if (response.ok) {
 				project = await response.json();
 				// Redirect if project type doesn't match route
@@ -61,7 +62,8 @@
 		loadProject();
 		
 		// Set up WebSocket for real-time updates
-		const ws = new WebSocket('ws://localhost:3000');
+		const hostname = window.location.hostname;
+		const ws = new WebSocket(`ws://${hostname}:3000`);
 		
 		ws.onmessage = (event) => {
 			const data = JSON.parse(event.data);
@@ -85,7 +87,7 @@
 	
 	async function startProcessing(mode: 'normal' | 'emotional' = 'emotional') {
 		try {
-			const response = await fetch(`http://localhost:3000/api/process/${projectId}/process`, {
+			const response = await fetch(`${getApiUrl()}/api/process/${projectId}/process`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -132,7 +134,7 @@
 								<ProcessingStatus {project} />
 							{:else if project.video}
 								<a
-									href="http://localhost:3000/api/process/{projectId}/download"
+									href="{getApiUrl()}/api/process/{projectId}/download"
 									class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
 								>
 									<svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -182,21 +184,7 @@
 		<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 			{#if activeTab === 'images'}
 				<div class="space-y-8">
-					<!-- Image Upload Section -->
-					<div>
-						<h2 class="text-lg font-medium text-gray-900 mb-4">Images</h2>
-						{#if !project.images || project.images.length === 0}
-							<ImageUpload {projectId} on:uploaded={handleImagesUploaded} />
-						{:else}
-							<ImageGallery 
-								{project} 
-								on:updated={loadProject}
-								on:add-more={handleImagesUploaded}
-							/>
-						{/if}
-					</div>
-					
-					<!-- Audio Upload Section -->
+					<!-- Audio Upload Section (shown first) -->
 					<div>
 						<h2 class="text-lg font-medium text-gray-900 mb-4">Audio</h2>
 						<AudioUpload 
@@ -204,8 +192,33 @@
 							hasAudio={!!project.audio}
 							audioFile={project.audio}
 							on:uploaded={handleAudioUploaded}
+							hideStartTime={true}
 						/>
 					</div>
+					
+					<!-- Image Upload Section (only shown after audio is added) -->
+					{#if project.audio}
+						<div>
+							<h2 class="text-lg font-medium text-gray-900 mb-4">Images</h2>
+							{#if !project.images || project.images.length === 0}
+								<ImageUpload {projectId} on:uploaded={handleImagesUploaded} />
+							{:else}
+								<ImageGallery 
+									{project} 
+									on:updated={loadProject}
+									on:add-more={handleImagesUploaded}
+								/>
+							{/if}
+						</div>
+					{:else}
+						<div class="bg-gray-50 rounded-lg p-6 text-center">
+							<svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+							</svg>
+							<h3 class="mt-2 text-sm font-medium text-gray-900">Add audio first</h3>
+							<p class="mt-1 text-sm text-gray-500">Please upload an audio file or provide a YouTube URL before adding images.</p>
+						</div>
+					{/if}
 				</div>
 			{:else if activeTab === 'slideshow'}
 				{#if project.images?.length > 0}

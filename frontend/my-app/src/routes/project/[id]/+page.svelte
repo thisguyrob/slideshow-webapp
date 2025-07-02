@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { getApiUrl } from '$lib/config';
 	import ImageUpload from '$lib/components/ImageUpload.svelte';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
 	import AudioUpload from '$lib/components/AudioUpload.svelte';
@@ -35,7 +36,7 @@
 	
 	async function loadProject() {
 		try {
-			const response = await fetch(`http://localhost:3000/api/projects/${projectId}`);
+			const response = await fetch(`${getApiUrl()}/api/projects/${projectId}`);
 			if (response.ok) {
 				project = await response.json();
 			} else {
@@ -74,12 +75,18 @@
 		loadProject();
 		
 		// Set up WebSocket for real-time updates
-		const ws = new WebSocket('ws://localhost:3000');
+		const hostname = window.location.hostname;
+		const ws = new WebSocket(`ws://${hostname}:3000`);
 		
 		ws.onmessage = (event) => {
 			const data = JSON.parse(event.data);
 			if (data.projectId === projectId) {
 				project = { ...project, ...data };
+				
+				// If processing completed, reload the project to get the video URL
+				if (data.status === 'completed') {
+					loadProject();
+				}
 			}
 		};
 		
@@ -98,7 +105,7 @@
 	
 	async function startProcessing(mode: 'normal' | 'emotional' = 'normal') {
 		try {
-			const response = await fetch(`http://localhost:3000/api/process/${projectId}/process`, {
+			const response = await fetch(`${getApiUrl()}/api/process/${projectId}/process`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -107,7 +114,8 @@
 			});
 			
 			if (response.ok) {
-				project.status = 'processing';
+				const result = await response.json();
+				project = { ...project, status: 'processing' };
 			}
 		} catch (error) {
 			console.error('Failed to start processing:', error);
@@ -145,7 +153,7 @@
 								<ProcessingStatus {project} />
 							{:else if isVideoUpToDate(project)}
 								<a
-									href="http://localhost:3000/api/process/{projectId}/download"
+									href="{getApiUrl()}/api/process/{projectId}/download"
 									class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
 								>
 									<svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

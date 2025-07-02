@@ -33,11 +33,39 @@ need_tool ffmpeg
 
 echo "▶︎ Processing Scavenger Hunt slideshow (fixed 73-second duration)"
 
-# Check if song.mp3 exists (should be pre-trimmed to 73 seconds)
-if [[ ! -f "song.mp3" ]]; then
-  echo "❌ No audio file found (song.mp3)" >&2
+# Find audio file - check metadata first, then fallback to song.mp3
+AUDIO_FILE=""
+if [[ -f "metadata.json" ]]; then
+  # Try to extract audioFile from metadata.json
+  if command -v jq >/dev/null 2>&1; then
+    AUDIO_FILE=$(jq -r '.audioFile // empty' metadata.json 2>/dev/null || true)
+  else
+    # Fallback method using grep
+    AUDIO_FILE=$(grep -o '"audioFile"[[:space:]]*:[[:space:]]*"[^"]*"' metadata.json 2>/dev/null | sed 's/.*"audioFile"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || true)
+  fi
+fi
+
+# If no audioFile in metadata, check for song.mp3
+if [[ -z "$AUDIO_FILE" ]] || [[ ! -f "$AUDIO_FILE" ]]; then
+  if [[ -f "song.mp3" ]]; then
+    AUDIO_FILE="song.mp3"
+  else
+    # Look for any mp3 file
+    for mp3 in *.mp3; do
+      if [[ -f "$mp3" ]]; then
+        AUDIO_FILE="$mp3"
+        break
+      fi
+    done
+  fi
+fi
+
+if [[ -z "$AUDIO_FILE" ]] || [[ ! -f "$AUDIO_FILE" ]]; then
+  echo "❌ No audio file found" >&2
   exit 1
 fi
+
+echo "🎵 Using audio file: $AUDIO_FILE"
 
 # Convert HEIC images if on Linux (using heif-convert)
 if command -v heif-convert >/dev/null 2>&1; then
@@ -50,18 +78,43 @@ if command -v heif-convert >/dev/null 2>&1; then
   done
 fi
 
-# Collect images (max 12)
+# Collect images based on slots.json order if it exists
 IMAGES=()
-for EXT in jpg JPG jpeg JPEG png PNG; do
-  for IMG in *.$EXT; do
-    if [[ -f "$IMG" ]]; then
-      IMAGES+=("$IMG")
-      if [[ ${#IMAGES[@]} -ge $MAX_IMAGES ]]; then
-        break 2
+if [[ -f "slots.json" ]]; then
+  echo "📋 Reading image order from slots.json..."
+  # Extract filenames from slots.json in order
+  # Using jq if available, otherwise fallback to grep/sed
+  if command -v jq >/dev/null 2>&1; then
+    while IFS= read -r filename; do
+      if [[ -n "$filename" && -f "$filename" ]]; then
+        IMAGES+=("$filename")
       fi
-    fi
+    done < <(jq -r '.[] | select(.filename != null) | .filename' slots.json)
+  else
+    # Fallback method using grep and sed
+    while IFS= read -r line; do
+      if [[ "$line" =~ \"filename\":\ *\"([^\"]+)\" ]]; then
+        filename="${BASH_REMATCH[1]}"
+        if [[ -f "$filename" ]]; then
+          IMAGES+=("$filename")
+        fi
+      fi
+    done < slots.json
+  fi
+else
+  # Fallback to collecting images by extension if no slots.json
+  echo "⚠️  No slots.json found, using default image order..."
+  for EXT in jpg JPG jpeg JPEG png PNG; do
+    for IMG in *.$EXT; do
+      if [[ -f "$IMG" ]]; then
+        IMAGES+=("$IMG")
+        if [[ ${#IMAGES[@]} -ge $MAX_IMAGES ]]; then
+          break 2
+        fi
+      fi
+    done
   done
-done
+fi
 
 NUM_IMAGES=${#IMAGES[@]}
 if [[ $NUM_IMAGES -eq 0 ]]; then
@@ -155,7 +208,7 @@ echo "🎵 Adding audio track with fade out..."
 # Calculate audio fade out start time to match final crossfade to black
 AUDIO_FADE_START=$((NUM_IMAGES * 6))
 
-ffmpeg -y -i "temp_video.mp4" -i "song.mp3" \
+ffmpeg -y -i "temp_video.mp4" -i "$AUDIO_FILE" \
   -c:v copy \
   -af "afade=t=out:st=${AUDIO_FADE_START}:d=${FADE_OUT_DURATION}" \
   -c:a aac -b:a 192k -ar 44100 \

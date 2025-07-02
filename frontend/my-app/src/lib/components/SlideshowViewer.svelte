@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { getApiUrl } from '$lib/config';
 	
 	interface Props {
 		project: any;
@@ -21,8 +22,13 @@
 	
 	$effect(() => {
 		isScavengerHunt = project.type === 'Scavenger-Hunt';
-		if (isScavengerHunt && project.images.length > 12) {
-			project.images = project.images.slice(0, 12);
+		if (isScavengerHunt) {
+			console.log('SlideshowViewer project data:', project);
+			console.log('Audio file:', project.audioFile);
+			console.log('Audio:', project.audio);
+			if (project.images.length > 12) {
+				project.images = project.images.slice(0, 12);
+			}
 		}
 		// Cleanup on unmount or when playing stops
 		return () => {
@@ -85,7 +91,7 @@
 		currentIndex = 0;
 		scavengerHuntPhase = 'fadeIn';
 		
-		if (audioElement && project.audio) {
+		if (audioElement && (project.audio || project.audioFile)) {
 			// For Scavenger Hunt, audio is pre-trimmed so start from 0
 			audioElement.currentTime = 0;
 			audioElement.volume = 0;
@@ -226,11 +232,18 @@
 	
 	function getImageUrl(filename: string | {name: string}) {
 		const imageName = typeof filename === 'string' ? filename : filename.name;
-		return `http://localhost:3000/api/files/${project.id}/${imageName}`;
+		return `${getApiUrl()}/api/files/${project.id}/${imageName}`;
 	}
 	
 	function getAudioUrl() {
-		return `http://localhost:3000/api/files/${project.id}/song.mp3`;
+		// For Scavenger Hunt projects, use the audioFile property if available
+		if (isScavengerHunt && project.audioFile) {
+			// If audioFile is an object with a name property, use that
+			const audioFileName = typeof project.audioFile === 'object' ? project.audioFile.name : project.audioFile;
+			return `${getApiUrl()}/api/files/${project.id}/${audioFileName}`;
+		}
+		// Fallback to default song.mp3 for other project types
+		return `${getApiUrl()}/api/files/${project.id}/song.mp3`;
 	}
 	
 	function convertTimeToSeconds(timeString: string): number {
@@ -262,7 +275,7 @@
 
 <div class="relative bg-black rounded-lg overflow-hidden">
 	<!-- Audio Element -->
-	{#if isScavengerHunt && project.audio}
+	{#if isScavengerHunt && (project.audio || project.audioFile)}
 		<audio bind:this={audioElement} preload="auto">
 			<source src={getAudioUrl()} type="audio/mpeg">
 		</audio>

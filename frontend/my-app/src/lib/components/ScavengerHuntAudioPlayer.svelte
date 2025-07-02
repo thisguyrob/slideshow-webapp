@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
+	import { getApiUrl } from '$lib/config';
 
 	interface Props {
 		projectId: string;
@@ -98,20 +99,8 @@
 		return gradient;
 	}
 
-	async function deleteAudio() {
-		if (!confirm('Delete the audio file? This will allow you to upload a new one.')) return;
-		
-		try {
-			const response = await fetch(`http://localhost:3000/api/upload/${projectId}/files/${audioFile}`, {
-				method: 'DELETE'
-			});
-			
-			if (response.ok) {
-				dispatch('uploaded');
-			}
-		} catch (error) {
-			console.error('Failed to delete audio:', error);
-		}
+	function replaceAudio() {
+		dispatch('replace');
 	}
 </script>
 
@@ -133,10 +122,10 @@
 			</div>
 		</div>
 		<button
-			onclick={deleteAudio}
-			class="text-sm font-medium text-red-600 hover:text-red-500"
+			onclick={replaceAudio}
+			class="text-sm font-medium text-blue-600 hover:text-blue-500"
 		>
-			Remove
+			Replace
 		</button>
 	</div>
 
@@ -150,7 +139,7 @@
 		onpause={handlePause}
 		preload="metadata"
 	>
-		<source src="http://localhost:3000/api/files/{projectId}/{audioFile}" type="audio/mpeg">
+		<source src="{getApiUrl()}/api/files/{projectId}/{audioFile}" type="audio/mpeg">
 	</audio>
 
 	<!-- Mini Player Controls -->
@@ -204,31 +193,6 @@
 				<span>Slideshow Content</span>
 				<span>Fade Out</span>
 			</div>
-		</div>
-
-		<!-- Volume Control -->
-		<div class="flex items-center space-x-3">
-			<svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
-				<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-			</svg>
-			<input
-				type="range"
-				min="0"
-				max="100"
-				value={volume * 100}
-				oninput={handleVolumeChange}
-				class="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-			/>
-		</div>
-
-		<!-- Audio Info -->
-		<div class="text-xs text-gray-500 bg-gray-50 p-3 rounded-md">
-			<p class="font-medium mb-1">Preview your Scavenger Hunt audio timing:</p>
-			<ul class="space-y-1">
-				<li>• 0-1s: Fade up with first image</li>
-				<li>• 1-72s: Main slideshow content</li>
-				<li>• 72-73s: Fade out with final image</li>
-			</ul>
 		</div>
 	</div>
 </div>

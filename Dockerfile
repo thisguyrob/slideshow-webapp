@@ -16,6 +16,8 @@ RUN apt-get update && \
     libheif-examples \
     yt-dlp \
     zsh \
+    jq \
+    bc \
     python3 \
     python3-pip \
     python3-numpy \
