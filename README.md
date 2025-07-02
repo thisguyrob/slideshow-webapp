@@ -87,8 +87,12 @@ Then open [http://localhost:3000](http://localhost:3000)
 
 ## 📚 Documentation
 
-- **[API Implementation Guide](API_IMPLEMENTATION.md)** - Detailed technical documentation
-- **[API Reference](API_REFERENCE.md)** - Complete endpoint documentation
+- **[API Implementation Guide](docs/api/implementation.md)**
+- **[API Reference](docs/api/reference.md)**
+- **[Docker Guide](docs/docker/guide.md)**
+- **[Scavenger Hunt Feature](docs/features/scavenger-hunt.md)**
+- **[YouTube Audio Guide](docs/features/youtube-audio.md)**
+- **[Changelog](docs/changelog.md)**
 
 ## 🔧 API Endpoints
 
@@ -214,7 +218,7 @@ All video generation logic remains identical for consistent quality.
 - **File Management**: Automatic cleanup of replaced files
 - **Backward Compatibility**: Legacy projects continue to work seamlessly
 
-See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+See [docs/changelog.md](docs/changelog.md) for detailed release notes.
 
 ## 📋 Requirements
 
