@@ -5,6 +5,7 @@ pnpm-lock.yaml
 frontend/.svelte-kit/
 frontend/build/
 backend/dist/
+backend/frontend-build/
 # runtime volumes
 projects/**
 !projects/.gitkeep
