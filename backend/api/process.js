@@ -119,7 +119,10 @@ router.post('/:projectId/process', async (req, res) => {
         try {
           const slotsContent = await fs.readFile(slotsPath, 'utf-8');
           const slots = JSON.parse(slotsContent);
-          hasPreGeneratedVideos = slots.some(slot => slot.tempVideo && files.includes(slot.tempVideo));
+          // Only use fast processing if ALL slots with images have tempVideo data
+          const slotsWithImages = slots.filter(slot => slot.filename);
+          hasPreGeneratedVideos = slotsWithImages.length > 0 && 
+                                 slotsWithImages.every(slot => slot.tempVideo && files.includes(slot.tempVideo));
         } catch (err) {
           // No slots.json or error reading it
         }

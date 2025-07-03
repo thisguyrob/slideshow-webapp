@@ -10,9 +10,9 @@
 	const dispatch = createEventDispatcher();
 	
 	let isDragging = $state(false);
-	let uploading = $state(false);
-	let uploadProgress = $state(0);
+	let uploadQueue = $state<{ file: File, id: string, progress: number, status: 'pending' | 'uploading' | 'completed' | 'error' }[]>([]);
 	let fileInput: HTMLInputElement;
+	let nextUploadId = 0;
 	
 	function handleDragOver(e: DragEvent) {
 		e.preventDefault();
@@ -47,44 +47,92 @@
 			return;
 		}
 		
-		uploading = true;
-		uploadProgress = 0;
+		// Add files to upload queue
+		const newUploads = imageFiles.map(file => ({
+			file,
+			id: `upload_${nextUploadId++}`,
+			progress: 0,
+			status: 'pending' as const
+		}));
 		
+		uploadQueue.push(...newUploads);
+		
+		// Process queue (allows concurrent uploads)
+		processUploadQueue();
+	}
+	
+	async function processUploadQueue() {
+		const pendingUploads = uploadQueue.filter(upload => upload.status === 'pending');
+		
+		// Process multiple uploads concurrently (limit to 3 at a time)
+		const maxConcurrent = 3;
+		const currentUploading = uploadQueue.filter(upload => upload.status === 'uploading').length;
+		const canStart = Math.min(maxConcurrent - currentUploading, pendingUploads.length);
+		
+		for (let i = 0; i < canStart; i++) {
+			const upload = pendingUploads[i];
+			upload.status = 'uploading';
+			uploadSingleFile(upload);
+		}
+	}
+	
+	async function uploadSingleFile(upload: { file: File, id: string, progress: number, status: 'pending' | 'uploading' | 'completed' | 'error' }) {
 		const formData = new FormData();
-		imageFiles.forEach(file => {
-			formData.append('images', file);
-		});
+		formData.append('images', upload.file);
 		
 		try {
 			const xhr = new XMLHttpRequest();
 			
 			xhr.upload.addEventListener('progress', (e) => {
 				if (e.lengthComputable) {
-					uploadProgress = (e.loaded / e.total) * 100;
+					upload.progress = (e.loaded / e.total) * 100;
+					uploadQueue = uploadQueue; // Trigger reactivity
 				}
 			});
 			
 			xhr.addEventListener('load', () => {
 				if (xhr.status === 200) {
-					dispatch('uploaded');
-					fileInput.value = '';
+					upload.status = 'completed';
+					upload.progress = 100;
+					
+					// Remove completed upload after a short delay
+					setTimeout(() => {
+						uploadQueue = uploadQueue.filter(u => u.id !== upload.id);
+						
+						// Dispatch uploaded event when all uploads are complete
+						if (uploadQueue.every(u => u.status === 'completed' || u.status === 'error')) {
+							dispatch('uploaded');
+							fileInput.value = '';
+						}
+					}, 1000);
+					
+					// Process next items in queue
+					processUploadQueue();
 				} else {
-					alert('Upload failed. Please try again.');
+					upload.status = 'error';
+					console.error('Upload failed:', xhr.responseText);
 				}
-				uploading = false;
+				uploadQueue = uploadQueue; // Trigger reactivity
 			});
 			
 			xhr.addEventListener('error', () => {
-				alert('Upload failed. Please try again.');
-				uploading = false;
+				upload.status = 'error';
+				uploadQueue = uploadQueue; // Trigger reactivity
+				console.error('Upload error for file:', upload.file.name);
+				
+				// Process next items in queue
+				processUploadQueue();
 			});
 			
 			xhr.open('POST', `${getApiUrl()}/api/upload/${projectId}/images`);
 			xhr.send(formData);
 		} catch (error) {
 			console.error('Upload error:', error);
-			alert('Upload failed. Please try again.');
-			uploading = false;
+			upload.status = 'error';
+			uploadQueue = uploadQueue; // Trigger reactivity
+			
+			// Process next items in queue
+			processUploadQueue();
 		}
 	}
 </script>
@@ -111,7 +159,6 @@
 					multiple
 					accept="image/*,.heic"
 					onchange={handleFileSelect}
-					disabled={uploading}
 				/>
 			</label>
 			<p class="pl-1">or drag and drop</p>
@@ -120,15 +167,38 @@
 			PNG, JPG, GIF, HEIC up to 100MB each
 		</p>
 		
-		{#if uploading}
-			<div class="mt-4">
-				<div class="bg-gray-200 rounded-full h-2 w-48 mx-auto">
-					<div 
-						class="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-						style="width: {uploadProgress}%"
-					></div>
-				</div>
-				<p class="text-sm text-gray-600 mt-2">Uploading... {Math.round(uploadProgress)}%</p>
+		{#if uploadQueue.length > 0}
+			<div class="mt-4 space-y-2">
+				{#each uploadQueue as upload (upload.id)}
+					<div class="bg-gray-50 rounded-lg p-3">
+						<div class="flex items-center justify-between mb-2">
+							<span class="text-sm text-gray-700 truncate flex-1 mr-2">
+								{upload.file.name}
+							</span>
+							<span class="text-xs px-2 py-1 rounded-full {
+								upload.status === 'uploading' ? 'bg-blue-100 text-blue-800' :
+								upload.status === 'completed' ? 'bg-green-100 text-green-800' :
+								upload.status === 'error' ? 'bg-red-100 text-red-800' :
+								'bg-gray-100 text-gray-800'
+							}">
+								{upload.status === 'uploading' ? 'Uploading' :
+								 upload.status === 'completed' ? 'Complete' :
+								 upload.status === 'error' ? 'Error' :
+								 'Pending'}
+							</span>
+						</div>
+						<div class="bg-gray-200 rounded-full h-2">
+							<div 
+								class="h-2 rounded-full transition-all duration-300 {
+									upload.status === 'completed' ? 'bg-green-500' :
+									upload.status === 'error' ? 'bg-red-500' :
+									'bg-blue-500'
+								}"
+								style="width: {upload.progress}%"
+							></div>
+						</div>
+					</div>
+				{/each}
 			</div>
 		{/if}
 	</div>

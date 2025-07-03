@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { promisify } from 'util';
 import crypto from 'crypto';
+import { atomicWriteJSON, atomicUpdateJSON } from '../utils/atomicFileOps.js';
 const execFile = promisify(spawn);
 
 const router = express.Router();
@@ -227,7 +228,7 @@ router.post('/:projectId/images', (req, res, next) => {
         }
       }
       
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      await atomicWriteJSON(metadataPath, metadata);
     } catch (err) {
       console.error('Failed to update metadata:', err);
       // Metadata update failed, but files are uploaded
@@ -355,7 +356,7 @@ router.post('/:projectId/audio', upload.single('audio'), async (req, res) => {
           metadata.downbeatCount = madmomResult.count;
         }
         
-        await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+        await atomicWriteJSON(metadataPath, metadata);
       } catch (err) {
         console.log(`[${projectId}] Warning: Could not update metadata`);
       }
@@ -371,7 +372,7 @@ router.post('/:projectId/audio', upload.single('audio'), async (req, res) => {
       const metadataContent = await fs.readFile(metadataPath, 'utf-8');
       const metadata = JSON.parse(metadataContent);
       metadata.updatedAt = new Date().toISOString();
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      await atomicWriteJSON(metadataPath, metadata);
     } catch (err) {
       // Metadata update failed, but file is uploaded
     }
@@ -421,7 +422,7 @@ router.post('/:projectId/youtube', async (req, res) => {
       const metadataContent = await fs.readFile(metadataPath, 'utf-8');
       const metadata = JSON.parse(metadataContent);
       metadata.updatedAt = new Date().toISOString();
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      await atomicWriteJSON(metadataPath, metadata);
     } catch (err) {
       // Metadata update failed, but URL is saved
     }
@@ -724,7 +725,7 @@ router.post('/:projectId/youtube-download', async (req, res) => {
                       metadata.audioTrimmed = true;
                       metadata.audioDuration = 73;
                       metadata.audioFile = audioFileName;
-                      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+                      await atomicWriteJSON(metadataPath, metadata);
                     } catch (err) {
                       console.log(`[${projectId}] Warning: Could not update metadata`);
                     }
@@ -949,7 +950,7 @@ except Exception as e:
                     metadata.downbeatCount = madmomResult.count;
                   }
                   
-                  await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+                  await atomicWriteJSON(metadataPath, metadata);
                 } catch (err) {
                   console.log(`[${projectId}] Warning: Could not update metadata`);
                 }
@@ -1178,15 +1179,15 @@ router.post('/:projectId/scavenger-hunt-slot', upload.single('images'), async (r
       uploadedAt: new Date().toISOString()
     };
 
-    // Save slots data
-    await fs.writeFile(slotsPath, JSON.stringify(slots, null, 2));
+    // Save slots data atomically
+    await atomicWriteJSON(slotsPath, slots);
 
-    // Update project metadata
+    // Update project metadata atomically
     try {
-      const metadataContent = await fs.readFile(metadataPath, 'utf-8');
-      const metadata = JSON.parse(metadataContent);
-      metadata.updatedAt = new Date().toISOString();
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      await atomicUpdateJSON(metadataPath, (metadata) => {
+        metadata.updatedAt = new Date().toISOString();
+        return metadata;
+      });
     } catch (err) {
       // Metadata update failed, but file is uploaded
     }
@@ -1269,16 +1270,16 @@ router.post('/:projectId/save-slots', async (req, res) => {
       return res.status(404).json({ error: 'Project not found or invalid' });
     }
     
-    // Save the slots data
+    // Save the slots data atomically
     const slotsPath = path.join(projectDir, 'slots.json');
-    await fs.writeFile(slotsPath, JSON.stringify(slots, null, 2));
+    await atomicWriteJSON(slotsPath, slots);
     
-    // Update project metadata
+    // Update project metadata atomically
     try {
-      const metadataContent = await fs.readFile(metadataPath, 'utf-8');
-      const metadata = JSON.parse(metadataContent);
-      metadata.updatedAt = new Date().toISOString();
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      await atomicUpdateJSON(metadataPath, (metadata) => {
+        metadata.updatedAt = new Date().toISOString();
+        return metadata;
+      });
     } catch (err) {
       // Metadata update failed, but slots are saved
     }
@@ -1337,7 +1338,7 @@ router.delete('/:projectId/files/:filename', async (req, res) => {
       }
       
       metadata.updatedAt = new Date().toISOString();
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      await atomicWriteJSON(metadataPath, metadata);
     } catch (err) {
       console.error('Failed to update metadata:', err);
       // Metadata update failed, but file is deleted

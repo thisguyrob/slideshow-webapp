@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
+import { atomicWriteJSON, atomicUpdateJSON } from '../utils/atomicFileOps.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -94,10 +95,7 @@ router.post('/', async (req, res) => {
       audioType: 'normal'
     };
     
-    await fs.writeFile(
-      path.join(projectDir, 'metadata.json'),
-      JSON.stringify(metadata, null, 2)
-    );
+    await atomicWriteJSON(path.join(projectDir, 'metadata.json'), metadata);
     
     res.json({ ...metadata, hasVideo: false });
   } catch (error) {
@@ -219,7 +217,7 @@ router.put('/:projectId', async (req, res) => {
     if (audioType !== undefined) metadata.audioType = audioType;
     metadata.updatedAt = new Date().toISOString();
     
-    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    await atomicWriteJSON(metadataPath, metadata);
     
     res.json(metadata);
   } catch (error) {
@@ -301,7 +299,7 @@ router.post('/:projectId/reorder', async (req, res) => {
       metadata.updatedAt = new Date().toISOString();
       metadata.imageOrder = images; // Also store simple order array
       
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      await atomicWriteJSON(metadataPath, metadata);
     } catch (err) {
       console.error('Error updating metadata:', err);
       // If no metadata exists, create it
@@ -315,7 +313,7 @@ router.post('/:projectId/reorder', async (req, res) => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      await atomicWriteJSON(metadataPath, metadata);
     }
     
     res.json({ message: 'Images reordered successfully' });

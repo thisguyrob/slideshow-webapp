@@ -31,12 +31,22 @@
 		}))
 	);
 	
-	let uploadingSlots = $state<Set<number>>(new Set());
 	let dragOverSlot = $state<number | null>(null);
 	let draggedSlot = $state<number | null>(null);
 	let isDraggingImage = $state(false);
-	let batchUploading = $state(false);
-	let batchUploadProgress = $state({ current: 0, total: 0 });
+	
+	// Enhanced upload queue system
+	let uploadQueue = $state<Array<{
+		id: string;
+		file: File;
+		slotId: number;
+		status: 'pending' | 'uploading' | 'completed' | 'error';
+		progress: number;
+		retryCount: number;
+		error?: string;
+	}>>([]);
+	let isProcessingQueue = $state(false);
+	let nextUploadId = 0;
 
 	// Get all currently uploaded filenames for duplicate detection
 	function getUploadedFilenames(): Set<string> {
@@ -47,13 +57,52 @@
 		);
 	}
 
+	function addToUploadQueue(file: File, slotId: number) {
+		const uploadedFilenames = getUploadedFilenames();
+		
+		// Check for duplicate filename
+		if (uploadedFilenames.has(file.name)) {
+			alert(`Image "${file.name}" is already uploaded in another slot. Please choose a different image.`);
+			return false;
+		}
+		
+		// Check if slot is already occupied
+		if (imageSlots[slotId - 1].image) {
+			alert(`Slot ${slotId} is already occupied. Please choose an empty slot.`);
+			return false;
+		}
+		
+		// Check if there's already an upload in queue for this slot
+		const existingUpload = uploadQueue.find(upload => 
+			upload.slotId === slotId && (upload.status === 'pending' || upload.status === 'uploading')
+		);
+		if (existingUpload) {
+			alert(`Slot ${slotId} already has an upload in progress.`);
+			return false;
+		}
+		
+		// Add to queue
+		const uploadItem = {
+			id: `upload_${nextUploadId++}`,
+			file,
+			slotId,
+			status: 'pending' as const,
+			progress: 0,
+			retryCount: 0
+		};
+		
+		uploadQueue.push(uploadItem);
+		processUploadQueue();
+		return true;
+	}
+	
 	async function handleBatchUpload(files: FileList) {
 		const uploadedFilenames = getUploadedFilenames();
-		const filesToUpload: Array<{file: File, slotId: number}> = [];
+		const filesToQueue: Array<{file: File, slotId: number}> = [];
 		
 		// Find empty slots and prepare upload list
 		let slotIndex = 0;
-		for (let i = 0; i < files.length && filesToUpload.length < 12; i++) {
+		for (let i = 0; i < files.length && filesToQueue.length < 12; i++) {
 			const file = files[i];
 			
 			// Skip duplicate filenames
@@ -68,93 +117,164 @@
 			}
 			
 			if (slotIndex < 12) {
-				filesToUpload.push({ file, slotId: slotIndex + 1 });
+				filesToQueue.push({ file, slotId: slotIndex + 1 });
 				uploadedFilenames.add(file.name); // Track to prevent duplicates within batch
 				slotIndex++;
 			}
 		}
 		
-		if (filesToUpload.length === 0) {
+		if (filesToQueue.length === 0) {
 			alert('No available slots or all selected images are already uploaded.');
 			return;
 		}
 		
-		// Start batch upload
-		batchUploading = true;
-		batchUploadProgress = { current: 0, total: filesToUpload.length };
+		// Add all files to queue
+		for (const { file, slotId } of filesToQueue) {
+			const uploadItem = {
+				id: `upload_${nextUploadId++}`,
+				file,
+				slotId,
+				status: 'pending' as const,
+				progress: 0,
+				retryCount: 0
+			};
+			uploadQueue.push(uploadItem);
+		}
 		
-		// Upload files sequentially to avoid overwhelming the server
-		let successCount = 0;
-		for (const { file, slotId } of filesToUpload) {
-			const success = await handleSlotUpload(slotId, file);
+		// Start processing the queue
+		processUploadQueue();
+	}
+	
+	async function processUploadQueue() {
+		if (isProcessingQueue) return;
+		
+		const pendingUploads = uploadQueue.filter(upload => upload.status === 'pending');
+		if (pendingUploads.length === 0) return;
+		
+		isProcessingQueue = true;
+		
+		// Process uploads sequentially to avoid overwhelming the backend
+		for (const upload of pendingUploads) {
+			if (upload.status !== 'pending') continue;
+			
+			upload.status = 'uploading';
+			uploadQueue = uploadQueue; // Trigger reactivity
+			
+			const success = await performSlotUpload(upload);
+			
 			if (success) {
-				successCount++;
+				upload.status = 'completed';
+				upload.progress = 100;
+				
+				// Remove completed upload after delay
+				setTimeout(() => {
+					uploadQueue = uploadQueue.filter(u => u.id !== upload.id);
+				}, 2000);
+			} else {
+				// Handle retry logic
+				if (upload.retryCount < 2) {
+					upload.retryCount++;
+					upload.status = 'pending';
+					upload.progress = 0;
+					console.log(`Retrying upload for slot ${upload.slotId}, attempt ${upload.retryCount + 1}`);
+				} else {
+					upload.status = 'error';
+					upload.error = 'Upload failed after 3 attempts';
+				}
 			}
-			batchUploadProgress.current++;
+			
+			uploadQueue = uploadQueue; // Trigger reactivity
+			
+			// Small delay between uploads to be gentle on the server
+			await new Promise(resolve => setTimeout(resolve, 500));
 		}
 		
-		batchUploading = false;
+		isProcessingQueue = false;
 		
-		if (successCount < filesToUpload.length) {
-			alert(`Uploaded ${successCount} of ${filesToUpload.length} images. Some uploads may have failed.`);
+		// If there are still pending uploads (from retries), process them
+		const stillPending = uploadQueue.filter(upload => upload.status === 'pending');
+		if (stillPending.length > 0) {
+			setTimeout(() => processUploadQueue(), 1000);
 		}
-		
-		batchUploadProgress = { current: 0, total: 0 };
 	}
 
-	async function handleSlotUpload(slotId: number, file: File): Promise<boolean> {
-		const uploadedFilenames = getUploadedFilenames();
-		
-		// Check for duplicate filename (unless this is from batch upload where we already checked)
-		if (!batchUploading && uploadedFilenames.has(file.name)) {
-			alert(`Image "${file.name}" is already uploaded in another slot. Please choose a different image.`);
-			return false;
-		}
-
-		uploadingSlots.add(slotId);
-		uploadingSlots = uploadingSlots; // Trigger reactivity
-
+	async function performSlotUpload(upload: {
+		id: string;
+		file: File;
+		slotId: number;
+		status: 'pending' | 'uploading' | 'completed' | 'error';
+		progress: number;
+		retryCount: number;
+		error?: string;
+	}): Promise<boolean> {
 		try {
 			const formData = new FormData();
-			formData.append('images', file);
-			formData.append('slot', slotId.toString());
+			formData.append('images', upload.file);
+			formData.append('slot', upload.slotId.toString());
 
-			const response = await fetch(`${getApiUrl()}/api/uploads/${projectId}/scavenger-hunt-slot`, {
-				method: 'POST',
-				body: formData
+			const xhr = new XMLHttpRequest();
+			
+			// Track upload progress
+			xhr.upload.addEventListener('progress', (e) => {
+				if (e.lengthComputable) {
+					upload.progress = (e.loaded / e.total) * 100;
+					uploadQueue = uploadQueue; // Trigger reactivity
+				}
 			});
 
-			if (response.ok) {
-				const result = await response.json();
-				const slotIndex = slotId - 1;
-				imageSlots[slotIndex] = {
-					id: slotId,
-					image: result.file?.url || `/api/files/${projectId}/${result.filename}`,
-					filename: result.filename
-				};
-				
-				// Delete slideshow.mp4 since images have changed
-				await deleteSlideshow();
-				
-				onSlotsUpdate?.(imageSlots);
-				return true;
-			} else {
-				const error = await response.json();
-				if (!batchUploading) {
-					alert(`Upload failed: ${error.error || 'Unknown error'}`);
-				}
-				return false;
-			}
+			const uploadPromise = new Promise<boolean>((resolve) => {
+				xhr.addEventListener('load', async () => {
+					if (xhr.status === 200) {
+						try {
+							const result = JSON.parse(xhr.responseText);
+							const slotIndex = upload.slotId - 1;
+							imageSlots[slotIndex] = {
+								id: upload.slotId,
+								image: result.file?.url || `/api/files/${projectId}/${result.filename}`,
+								filename: result.filename
+							};
+							
+							// Delete slideshow.mp4 since images have changed
+							await deleteSlideshow();
+							
+							onSlotsUpdate?.(imageSlots);
+							resolve(true);
+						} catch (parseError) {
+							console.error('Failed to parse response:', parseError);
+							upload.error = 'Invalid server response';
+							resolve(false);
+						}
+					} else {
+						try {
+							const error = JSON.parse(xhr.responseText);
+							upload.error = error.error || 'Upload failed';
+						} catch {
+							upload.error = `Upload failed with status ${xhr.status}`;
+						}
+						resolve(false);
+					}
+				});
+
+				xhr.addEventListener('error', () => {
+					upload.error = 'Network error during upload';
+					resolve(false);
+				});
+			});
+
+			xhr.open('POST', `${getApiUrl()}/api/uploads/${projectId}/scavenger-hunt-slot`);
+			xhr.send(formData);
+			
+			return await uploadPromise;
 		} catch (error) {
 			console.error('Upload error:', error);
-			if (!batchUploading) {
-				alert('Upload failed. Please try again.');
-			}
+			upload.error = error instanceof Error ? error.message : 'Unknown error';
 			return false;
-		} finally {
-			uploadingSlots.delete(slotId);
-			uploadingSlots = uploadingSlots; // Trigger reactivity
 		}
+	}
+	
+	// Updated function for single slot uploads (from file input or drag & drop)
+	async function handleSlotUpload(slotId: number, file: File): Promise<boolean> {
+		return addToUploadQueue(file, slotId);
 	}
 
 	async function removeSlotImage(slotId: number) {
@@ -185,12 +305,76 @@
 
 	function handleFileSelect(slotId: number, event: Event) {
 		const input = event.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (file) {
-			handleSlotUpload(slotId, file);
+		const files = input.files;
+		if (files && files.length > 0) {
+			if (files.length === 1) {
+				// Single file - upload to the selected slot
+				handleSlotUpload(slotId, files[0]);
+			} else {
+				// Multiple files - queue them starting from the selected slot
+				handleMultipleFilesFromSlot(slotId, files);
+			}
 		}
-		// Reset input to allow re-uploading same file
+		// Reset input to allow re-uploading same files
 		input.value = '';
+	}
+	
+	function handleMultipleFilesFromSlot(startSlotId: number, files: FileList) {
+		const uploadedFilenames = getUploadedFilenames();
+		const filesToQueue: Array<{file: File, slotId: number}> = [];
+		
+		// Start from the selected slot and find available slots
+		let currentSlotIndex = startSlotId - 1;
+		
+		for (let i = 0; i < files.length && filesToQueue.length < 12; i++) {
+			const file = files[i];
+			
+			// Skip duplicate filenames
+			if (uploadedFilenames.has(file.name)) {
+				console.log(`Skipping duplicate file: ${file.name}`);
+				continue;
+			}
+			
+			// Find next available slot starting from currentSlotIndex
+			while (currentSlotIndex < 12 && imageSlots[currentSlotIndex].image) {
+				currentSlotIndex++;
+			}
+			
+			if (currentSlotIndex < 12) {
+				filesToQueue.push({ file, slotId: currentSlotIndex + 1 });
+				uploadedFilenames.add(file.name); // Track to prevent duplicates within batch
+				currentSlotIndex++; // Move to next slot for next file
+			} else {
+				// No more available slots
+				break;
+			}
+		}
+		
+		if (filesToQueue.length === 0) {
+			alert('No available slots or all selected images are already uploaded.');
+			return;
+		}
+		
+		if (filesToQueue.length < files.length) {
+			const skipped = files.length - filesToQueue.length;
+			alert(`Queuing ${filesToQueue.length} files. ${skipped} files were skipped (no available slots or duplicates).`);
+		}
+		
+		// Add all files to queue
+		for (const { file, slotId } of filesToQueue) {
+			const uploadItem = {
+				id: `upload_${nextUploadId++}`,
+				file,
+				slotId,
+				status: 'pending' as const,
+				progress: 0,
+				retryCount: 0
+			};
+			uploadQueue.push(uploadItem);
+		}
+		
+		// Start processing the queue
+		processUploadQueue();
 	}
 
 	function handleBatchFileSelect(event: Event) {
@@ -218,12 +402,24 @@
 		// Otherwise, check for file upload
 		const files = event.dataTransfer?.files;
 		if (files && files.length > 0) {
-			const file = files[0];
-			// Validate file type
-			if (file.type.startsWith('image/')) {
-				handleSlotUpload(slotId, file);
+			// Filter for image files only
+			const imageFiles = Array.from(files).filter(file => 
+				file.type.startsWith('image/') || file.name.toLowerCase().endsWith('.heic')
+			);
+			
+			if (imageFiles.length === 0) {
+				alert('Please upload image files only (JPEG, PNG, HEIC, etc.)');
+				return;
+			}
+			
+			if (imageFiles.length === 1) {
+				// Single file - upload to the dropped slot
+				handleSlotUpload(slotId, imageFiles[0]);
 			} else {
-				alert('Please upload an image file (JPEG, PNG, HEIC, etc.)');
+				// Multiple files - queue them starting from the dropped slot
+				const fileList = new DataTransfer();
+				imageFiles.forEach(file => fileList.items.add(file));
+				handleMultipleFilesFromSlot(slotId, fileList.files);
 			}
 		}
 	}
@@ -279,6 +475,9 @@
 			filename: fromSlot.filename
 		};
 		
+		// Trigger reactivity
+		imageSlots = imageSlots;
+		
 		// Save the reordered slots
 		await saveSlots();
 		
@@ -299,7 +498,7 @@
 			});
 			
 			if (!response.ok) {
-				console.error('Failed to save slot order');
+				console.error('Failed to save slot order:', response.status, response.statusText);
 			}
 		} catch (error) {
 			console.error('Error saving slots:', error);
@@ -308,36 +507,6 @@
 </script>
 
 <div class="scavenger-hunt-grid">
-	<!-- Batch Upload Button -->
-	{#if imageSlots.filter(slot => !slot.image).length >= 2}
-		<div class="mb-6 text-center">
-			<label class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 cursor-pointer transition-colors {batchUploading ? 'opacity-75 cursor-not-allowed' : ''}">
-			<input
-				type="file"
-				accept="image/*"
-				multiple
-				onchange={handleBatchFileSelect}
-				disabled={batchUploading}
-				class="hidden"
-			/>
-			{#if batchUploading}
-				<svg class="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-					<path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-				</svg>
-				Uploading {batchUploadProgress.current} of {batchUploadProgress.total}...
-			{:else}
-				<svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-				</svg>
-				Upload Multiple Images (Max 12)
-			{/if}
-		</label>
-		<p class="mt-2 text-sm text-gray-500">
-			Select up to 12 images at once, or click individual slots below
-		</p>
-	</div>
-	{/if}
 
 	<div class="grid grid-cols-4 gap-4 max-w-4xl mx-auto">
 		{#each imageSlots as slot (slot.id)}
@@ -378,14 +547,28 @@
 					>
 						×
 					</button>
-				{:else if uploadingSlots.has(slot.id)}
+				{:else if uploadQueue.find(upload => upload.slotId === slot.id && (upload.status === 'uploading' || upload.status === 'pending'))}
+					{@const upload = uploadQueue.find(upload => upload.slotId === slot.id && (upload.status === 'uploading' || upload.status === 'pending'))}
 					<!-- Uploading State -->
 					<div class="flex flex-col items-center justify-center h-full text-gray-500">
-						<svg class="animate-spin h-8 w-8 mb-2" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-						</svg>
-						<span class="text-sm">Uploading...</span>
+						{#if upload?.status === 'uploading'}
+							<svg class="animate-spin h-8 w-8 mb-2" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							</svg>
+							<span class="text-sm">Uploading... {Math.round(upload.progress)}%</span>
+							<div class="w-16 bg-gray-200 rounded-full h-1 mt-1">
+								<div class="bg-blue-500 h-1 rounded-full transition-all duration-300" style="width: {upload.progress}%"></div>
+							</div>
+						{:else}
+							<svg class="h-8 w-8 mb-2 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+							</svg>
+							<span class="text-sm">In Queue...</span>
+							{#if upload?.retryCount > 0}
+								<span class="text-xs text-orange-600">Retry {upload.retryCount + 1}</span>
+							{/if}
+						{/if}
 					</div>
 				{:else}
 					<!-- Empty Slot -->
@@ -393,6 +576,7 @@
 						<input
 							type="file"
 							accept="image/*"
+							multiple
 							onchange={(e) => handleFileSelect(slot.id, e)}
 							class="hidden"
 						/>
@@ -400,8 +584,8 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
 						</svg>
 						<span class="text-sm text-center px-2">
-							Add Image<br>
-							<span class="text-xs">or drag & drop</span>
+							Add Image(s)<br>
+							<span class="text-xs">or drag & drop multiple</span>
 						</span>
 					</label>
 				{/if}

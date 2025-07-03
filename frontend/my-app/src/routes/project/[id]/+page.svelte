@@ -16,7 +16,10 @@
 	
 	const projectId = $page.params.id;
 	
-	function isVideoUpToDate(project: any): boolean {
+	// Reactive computed value for video status
+	let isVideoUpToDate = $derived(() => {
+		if (!project) return false;
+		
 		// If no video exists, it's not up to date
 		if (!project.video) return false;
 		
@@ -32,7 +35,7 @@
 		
 		// Default to assuming video is up to date if we have it
 		return true;
-	}
+	});
 	
 	async function loadProject() {
 		try {
@@ -151,7 +154,7 @@
 						<div class="flex items-center space-x-3">
 							{#if project.status === 'processing'}
 								<ProcessingStatus {project} />
-							{:else if isVideoUpToDate(project)}
+							{:else if isVideoUpToDate}
 								<a
 									href="{getApiUrl()}/api/process/{projectId}/download"
 									class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
