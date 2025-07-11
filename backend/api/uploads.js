@@ -54,7 +54,7 @@ async function convertHeicToJpg(inputPath, outputPath) {
       await runProcess('heif-convert', [inputPath, outputPath]);
       return;
     } catch (err) {
-      console.error('heif-convert failed, falling back to ImageMagick:', err.message);
+      console.error('heif-convert failed, falling back to other tools:', err.message);
     }
   }
 
@@ -64,7 +64,17 @@ async function convertHeicToJpg(inputPath, outputPath) {
       await runProcess('sips', ['-s', 'format', 'jpeg', inputPath, '--out', outputPath]);
       return;
     } catch (err) {
-      console.error('sips failed, falling back to ImageMagick:', err.message);
+      console.error('sips failed, trying ffmpeg/ImageMagick:', err.message);
+    }
+  }
+
+  // ffmpeg can also decode HEIC when built with libheif
+  if (await commandExists('ffmpeg')) {
+    try {
+      await runProcess('ffmpeg', ['-y', '-i', inputPath, outputPath]);
+      return;
+    } catch (err) {
+      console.error('ffmpeg failed, trying ImageMagick:', err.message);
     }
   }
 
