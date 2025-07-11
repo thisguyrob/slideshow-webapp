@@ -140,7 +140,7 @@ router.post('/:projectId/process', async (req, res) => {
     console.log(`Project type: ${projectType}, Audio type: ${audioType}, Has pre-generated videos: ${hasPreGeneratedVideos}`);
     let scriptName;
     if (projectType === 'Scavenger-Hunt') {
-      scriptName = hasPreGeneratedVideos ? 'scavenger_hunt_slideshow_builder.sh' : 'process_scavenger_hunt.sh';
+      scriptName = hasPreGeneratedVideos ? 'scavenger_hunt_slideshow_builder_v2.sh' : 'process_scavenger_hunt.sh';
     } else if (audioType === 'emotional') {
       scriptName = hasPreGeneratedVideos ? 'process_single_emotional_fast.sh' : 'process_single_emotional.sh';
     } else {

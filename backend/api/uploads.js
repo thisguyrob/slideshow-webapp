@@ -13,29 +13,63 @@ const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECTS_DIR = path.join(__dirname, '../projects');
 
-// Function to convert HEIC/HEIF files to JPG using ImageMagick
-async function convertHeicToJpg(inputPath, outputPath) {
+// Utility to check if a command exists on the system
+function commandExists(cmd) {
+  return new Promise((resolve) => {
+    const checker = spawn('which', [cmd]);
+    checker.on('close', (code) => resolve(code === 0));
+    checker.on('error', () => resolve(false));
+  });
+}
+
+// Run a command and resolve when it exits successfully
+function runProcess(cmd, args) {
   return new Promise((resolve, reject) => {
-    const convert = spawn('convert', [inputPath, outputPath]);
-    
+    const proc = spawn(cmd, args);
     let errorOutput = '';
-    
-    convert.stderr.on('data', (data) => {
+
+    proc.stderr.on('data', (data) => {
       errorOutput += data.toString();
     });
-    
-    convert.on('close', (code) => {
+
+    proc.on('close', (code) => {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`ImageMagick conversion failed: ${errorOutput}`));
+        reject(new Error(`${cmd} failed: ${errorOutput}`));
       }
     });
-    
-    convert.on('error', (err) => {
-      reject(new Error(`Failed to start ImageMagick: ${err.message}`));
+
+    proc.on('error', (err) => {
+      reject(new Error(`Failed to start ${cmd}: ${err.message}`));
     });
   });
+}
+
+// Function to convert HEIC/HEIF files to JPG using available tools
+async function convertHeicToJpg(inputPath, outputPath) {
+  // Prefer heif-convert if available (Linux)
+  if (await commandExists('heif-convert')) {
+    try {
+      await runProcess('heif-convert', [inputPath, outputPath]);
+      return;
+    } catch (err) {
+      console.error('heif-convert failed, falling back to ImageMagick:', err.message);
+    }
+  }
+
+  // macOS provides sips for HEIC conversion
+  if (process.platform === 'darwin' && (await commandExists('sips'))) {
+    try {
+      await runProcess('sips', ['-s', 'format', 'jpeg', inputPath, '--out', outputPath]);
+      return;
+    } catch (err) {
+      console.error('sips failed, falling back to ImageMagick:', err.message);
+    }
+  }
+
+  // Fallback to ImageMagick's convert (requires HEIC delegate)
+  await runProcess('convert', [inputPath, outputPath]);
 }
 
 // Function to pre-process image to MP4

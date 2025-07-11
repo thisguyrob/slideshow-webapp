@@ -44,7 +44,7 @@ docker-compose.yml
 ```
 
 The container includes:
-- **Media Processing**: `ffmpeg` (5.1.6), `libheif-examples`, `yt-dlp`
+- **Media Processing**: `ffmpeg` (5.1.6), `ImageMagick`, `libheif-examples` (provides `heif-convert` for HEIC), `yt-dlp`
 - **Audio Analysis**: Python 3 with `madmom` for beat detection
 - **Shell Support**: `zsh` for script compatibility
 - **Enhanced Processing**: Optimized slideshow builders with Docker-compatible FFmpeg filters

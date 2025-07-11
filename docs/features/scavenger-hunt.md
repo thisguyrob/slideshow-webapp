@@ -13,7 +13,7 @@ YouTube audio.
 
 ## Implementation Highlights
 
-- `scavenger_hunt_slideshow_builder.sh` pre-renders short video segments and
+- `scavenger_hunt_slideshow_builder_v2.sh` pre-renders short video segments and
   stitches them together with FFmpeg crossfades for smooth transitions.
 - Timing fixes ensure the first and last images display for the correct
 duration and that the audio fades out with the final slide.
