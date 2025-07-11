@@ -59,9 +59,9 @@ Created modular API structure in `backend/api/`:
 - `POST /api/upload/:id/youtube-download` - Download and convert YouTube audio
 - `DELETE /api/upload/:id/files/:filename` - Delete specific files
 
-**Features:**
 - Multer-based file upload with validation
 - Support for images: JPEG, PNG, HEIC
+- HEIC images are automatically converted to JPG using `heif-convert` when available, with fallbacks to `sips`, `ffmpeg`, and ImageMagick
 - Support for audio: MP3, WAV, M4A, AAC
 - YouTube URL validation
 - yt-dlp integration for audio download with time-based extraction

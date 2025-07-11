@@ -9,7 +9,7 @@ file uploads, audio analysis, and slideshow processing capabilities.
 - **Project Management**: Create, organize, and manage multiple slideshow projects
 - **Multiple Project Types**: FWI Main, FWI Emotional, and Scavenger Hunt with unique interfaces
   - **Enhanced Scavenger Hunt**: 90% faster processing with professional crossfades (10-15s vs 2-3 min)
-- **Smart File Uploads**: Support for images (JPEG, PNG, HEIC) and audio files
+- **Smart File Uploads**: Support for images (JPEG, PNG, HEIC) and audio files with automatic HEIC conversion
   - **Batch Upload**: Upload up to 12 images at once for Scavenger Hunt projects
   - **Duplicate Prevention**: Automatic detection and prevention of duplicate images
 - **YouTube Integration**: Download audio directly from YouTube with time-based extraction
@@ -44,7 +44,7 @@ docker-compose.yml
 ```
 
 The container includes:
-- **Media Processing**: `ffmpeg` (5.1.6), `libheif-examples`, `yt-dlp`
+- **Media Processing**: `ffmpeg` (5.1.6), `ImageMagick`, `libheif-examples` (provides `heif-convert`), plus `ffmpeg` fallback for HEIC, `yt-dlp`
 - **Audio Analysis**: Python 3 with `madmom` for beat detection
 - **Shell Support**: `zsh` for script compatibility
 - **Enhanced Processing**: Optimized slideshow builders with Docker-compatible FFmpeg filters
